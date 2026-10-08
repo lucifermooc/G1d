@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>G1D 底盘控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0e0e18;--bg2:#16162a;--bg3:#1e1e32;--bg4:#252540;
+  --border:#2a2a44;--border2:#3a3a58;
+  --txt:#ccd0da;--txt2:#888aaa;--txt3:#555770;
+  --blue:#5ab4f0;--blue2:#3a8fd0;--green:#3ec89a;
+  --yellow:#e8b84b;--red:#e05555;--purple:#a07af0;
+  --orange:#e07840;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);
+  height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none;}
+
+/* ═══════════════ TOPBAR ═══════════════ */
+.topbar{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:0 16px;height:46px;display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.logo{font-size:15px;font-weight:800;color:var(--blue);letter-spacing:.5px;margin-right:4px;}
+.ip-input{
+  background:var(--bg);border:1px solid var(--border);color:var(--txt);
+  padding:4px 9px;border-radius:5px;font-size:12px;width:145px;outline:none;
+  transition:border .2s;
+}
+.ip-input:focus{border-color:var(--blue);}
+.port-tag{font-size:11px;color:var(--txt3);}
+.conn-btn{
+  background:var(--blue);color:#0e0e18;border:none;border-radius:5px;
+  padding:4px 13px;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s;
+}
+.conn-btn:hover{background:#78c8ff;}
+.conn-btn:disabled{opacity:.5;cursor:not-allowed;}
+.conn-btn.conn-disconnect{background:var(--red);}
+.conn-btn.conn-disconnect:hover{background:#ff6666;}
+
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:background .3s;flex-shrink:0;}
+.sdot.ok{background:var(--green);}
+.sdot.err{background:var(--red);}
+.sdot.stale{background:var(--yellow);}
+.stext{font-size:11px;color:var(--txt3);}
+
+.batt-wrap{margin-left:auto;display:flex;align-items:center;gap:6px;}
+.batt-icon{font-size:16px;}
+.batt-pct{font-size:12px;font-weight:700;}
+.batt-charging{color:var(--yellow);}
+.batt-ok{color:var(--green);}
+.batt-low{color:var(--red);}
+.on-dock-tag{
+  font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;
+  background:#1e3a2a;color:var(--green);border:1px solid #2a5a3a;
+}
+.last-upd{font-size:10px;color:var(--txt3);}
+
+/* ═══════════════ MAIN ═══════════════ */
+.main{display:flex;flex:1;overflow:hidden;}
+
+/* ═══════════════ SIDEBAR ═══════════════ */
+.sidebar{
+  width:186px;background:var(--bg2);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.sb-section{padding:8px 8px 4px;}
+.sb-title{
+  font-size:9px;text-transform:uppercase;letter-spacing:1.3px;
+  color:var(--txt3);padding:0 2px 5px;border-bottom:1px solid var(--border);
+  margin-bottom:5px;
+}
+.btn{
+  width:100%;padding:6px 9px;border:none;border-radius:5px;cursor:pointer;
+  font-size:11px;font-weight:600;text-align:left;transition:all .12s;outline:none;
+  display:flex;align-items:center;gap:6px;margin-bottom:3px;position:relative;
+}
+.btn:disabled{opacity:.28;cursor:not-allowed;}
+.btn .ico{font-size:13px;flex-shrink:0;}
+
+.b-blue  {background:#1a3050;color:var(--blue);}
+.b-blue:hover:not(:disabled){background:#204060;}
+.b-green {background:#163028;color:var(--green);}
+.b-green:hover:not(:disabled){background:#1e4030;}
+.b-yellow{background:#302010;color:var(--yellow);}
+.b-yellow:hover:not(:disabled){background:#403018;}
+.b-red   {background:#301010;color:var(--red);}
+.b-red:hover:not(:disabled){background:#401818;}
+.b-purple{background:#201840;color:var(--purple);}
+.b-purple:hover:not(:disabled){background:#28205a;}
+.b-orange{background:#302010;color:var(--orange);}
+.b-orange:hover:not(:disabled){background:#403018;}
+.b-ghost {background:transparent;color:var(--txt2);border:1px solid var(--border);}
+.b-ghost:hover:not(:disabled){background:var(--bg3);}
+
+/* active draw tool */
+.btn.tool-active{box-shadow:inset 0 0 0 1.5px currentColor;}
+
+/* button loading spinner */
+@keyframes spin{to{transform:rotate(360deg);}}
+.btn-loading{opacity:.6 !important;pointer-events:none;}
+.btn-loading .ico{display:inline-block;animation:spin .6s linear infinite;}
+
+/* mode buttons */
+.mode-row{display:flex;gap:5px;padding:0 8px 6px;}
+.mbtn{
+  flex:1;padding:7px 4px;border:none;border-radius:5px;
+  font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;
+  outline:none;opacity:.35;
+}
+.mbtn:disabled{cursor:not-allowed;opacity:.2;}
+.mbtn.active{opacity:1;}
+.mb-map {background:#302010;color:var(--yellow);}
+.mb-map:hover:not(:disabled){background:#40301a;}
+.mb-nav {background:#1a3050;color:var(--blue);}
+.mb-nav:hover:not(:disabled){background:#204060;}
+
+/* mode hint strip */
+.mode-hint-strip{
+  font-size:9px;color:var(--txt3);padding:0 10px 6px;line-height:1.5;
+}
+
+/* teleop */
+.teleop{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 8px 8px;}
+.tk{
+  background:var(--bg3);border:1px solid var(--border);color:var(--txt2);
+  padding:8px;border-radius:6px;cursor:pointer;text-align:center;
+  font-size:14px;transition:all .1s;touch-action:none;
+}
+.tk:active,.tk.on{background:var(--bg4);border-color:var(--blue);color:var(--blue);}
+.tk.ghost{visibility:hidden;}
+.kb-hint{font-size:9px;color:var(--txt3);padding:0 10px 8px;line-height:1.7;}
+.speed-row{display:flex;align-items:center;gap:6px;padding:2px 10px 6px;font-size:11px;color:var(--txt2);}
+.speed-row input{width:52px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--txt1);padding:2px 5px;font-size:11px;text-align:center;}
+.speed-row label{color:var(--txt3);font-size:10px;min-width:28px;}
+
+/* ═══════════════ MAP AREA ═══════════════ */
+.map-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
+
+.map-toolbar{
+  background:#13132088;backdrop-filter:blur(4px);padding:5px 12px;
+  display:flex;align-items:center;gap:8px;font-size:11px;
+  border-bottom:1px solid #2a2a4422;flex-shrink:0;
+}
+.badge{padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;}
+.badge-map {background:#30201088;color:var(--yellow);border:1px solid #60401044;}
+.badge-nav {background:#1a305088;color:var(--blue);  border:1px solid #3060a044;}
+.badge-idle{background:#20203088;color:var(--txt3);  border:1px solid var(--border);}
+
+.map-hint{font-size:10px;color:var(--txt3);}
+.zoom-btns{margin-left:auto;display:flex;gap:3px;}
+.zoom-btn{
+  background:var(--bg3);border:1px solid var(--border);color:var(--txt2);
+  padding:2px 7px;border-radius:4px;cursor:pointer;font-size:11px;
+  transition:background .1s;
+}
+.zoom-btn:hover{background:var(--bg4);}
+.coord-display{font-size:10px;color:var(--txt3);min-width:128px;text-align:right;}
+
+.canvas-wrap{flex:1;overflow:hidden;background:#a0a0a0;position:relative;cursor:crosshair;}
+#mapCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+/* disconnected overlay */
+.disconn-overlay{
+  position:absolute;inset:0;background:#0e0e18cc;
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;
+  pointer-events:none;z-index:10;
+}
+.disconn-overlay.show{display:flex;}
+.disconn-icon{font-size:36px;}
+.disconn-text{font-size:14px;color:var(--txt2);}
+.disconn-sub{font-size:11px;color:var(--txt3);}
+
+/* scale bar */
+.scale-bar{
+  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;
+}
+.scale-line{height:3px;background:var(--txt2);border-radius:2px;}
+.scale-label{font-size:9px;color:var(--txt2);}
+
+/* draw tool info bar */
+.draw-info{
+  position:absolute;top:36px;left:50%;transform:translateX(-50%);
+  background:var(--bg2)dd;border:1px solid var(--border);
+  padding:5px 14px;border-radius:20px;font-size:11px;color:var(--yellow);
+  pointer-events:none;display:none;z-index:5;
+}
+.draw-info.show{display:block;}
+.draw-info.reloc-mode{color:var(--blue);}
+
+/* ═══════════════ RIGHT PANEL ═══════════════ */
+.rpanel{
+  width:196px;background:var(--bg2);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;
+}
+.rtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.rtab{
+  flex:1;padding:7px 4px;text-align:center;font-size:10px;font-weight:700;
+  color:var(--txt3);cursor:pointer;transition:all .15s;border-bottom:2px solid transparent;
+  letter-spacing:.3px;
+}
+.rtab.active{color:var(--blue);border-bottom-color:var(--blue);}
+
+.rpane{display:none;flex:1;overflow-y:auto;padding:10px 8px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.rpane.active{display:block;}
+
+/* stat cards */
+.card{
+  background:var(--bg);border:1px solid var(--border);border-radius:7px;
+  padding:8px 10px;margin-bottom:7px;
+}
+.card-label{font-size:9px;color:var(--txt3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;}
+.card-val{font-size:12px;font-weight:600;white-space:pre-line;line-height:1.6;}
+.card-val.mono{font-family:monospace;font-size:11px;}
+
+.qbar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:6px;}
+.qfill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
+
+.action-tag{
+  font-size:9px;padding:2px 7px;border-radius:10px;font-weight:600;margin-top:4px;display:inline-block;
+  background:#1a3050;color:var(--blue);border:1px solid #2a4070;
+}
+
+/* POI / dock list */
+.err-item{background:var(--bg2);border:1px solid #4a2020;border-radius:6px;padding:8px;margin-bottom:6px;}
+.err-code{font-size:10px;color:var(--txt3);font-family:monospace;margin-bottom:3px;}
+.err-msg{font-size:12px;color:var(--red);margin-bottom:6px;line-height:1.4;}
+.err-level{display:inline-block;font-size:9px;padding:1px 6px;border-radius:3px;margin-bottom:4px;}
+.err-level.warn{background:#3a2a00;color:var(--yellow);}
+.err-level.error{background:#3a1010;color:var(--red);}
+.err-level.fatal{background:#5a0000;color:#ff6060;}
+.health-ok{text-align:center;padding:20px;color:var(--green);font-size:13px;}
+.poi-item{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:6px 8px;margin-bottom:5px;
+}
+.poi-name{font-size:11px;font-weight:600;color:var(--txt);margin-bottom:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.poi-coords{font-size:9px;color:var(--txt3);font-family:monospace;}
+.poi-btns{display:flex;gap:3px;margin-top:5px;}
+.poi-btn{
+  flex:1;padding:3px 0;border:none;border-radius:4px;cursor:pointer;
+  font-size:10px;font-weight:600;transition:background .1s;
+}
+.poi-btn.nav{background:#1a3050;color:var(--blue);}
+.poi-btn.nav:hover{background:#204060;}
+.poi-btn.del{background:#301010;color:var(--red);}
+.poi-btn.del:hover{background:#401818;}
+
+.add-poi-row{display:flex;gap:4px;margin-bottom:8px;}
+.poi-name-input{
+  flex:1;background:var(--bg);border:1px solid var(--border);color:var(--txt);
+  padding:4px 7px;border-radius:4px;font-size:11px;outline:none;
+}
+.poi-name-input:focus{border-color:var(--blue);}
+.poi-add-btn{
+  background:#1a3050;color:var(--blue);border:none;border-radius:4px;
+  padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;
+}
+.poi-add-btn:hover{background:#204060;}
+.poi-add-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+.empty-hint{font-size:11px;color:var(--txt3);text-align:center;padding:16px 0;}
+
+/* area / wall list */
+.area-item{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:6px 8px;margin-bottom:5px;display:flex;align-items:center;gap:6px;
+}
+.area-label{font-size:10px;color:var(--txt);flex:1;font-family:monospace;}
+.area-del{
+  background:var(--bg3);border:1px solid var(--border);color:var(--txt3);
+  padding:2px 6px;border-radius:4px;cursor:pointer;font-size:10px;
+}
+.area-del:hover{background:#301010;color:var(--red);}
+
+.clear-row{display:flex;justify-content:flex-end;margin-bottom:6px;}
+.clear-btn{
+  font-size:10px;color:var(--red);background:transparent;border:1px solid #301010;
+  padding:3px 8px;border-radius:4px;cursor:pointer;
+}
+.clear-btn:hover{background:#301010;}
+
+/* ═══════════════ TOAST ═══════════════ */
+.toast{
+  position:fixed;bottom:18px;right:18px;
+  background:var(--bg2);border:1px solid var(--border);
+  color:var(--txt);padding:8px 14px;border-radius:7px;
+  font-size:11px;z-index:999;pointer-events:none;
+  opacity:0;transform:translateY(6px);transition:all .22s;
+  max-width:280px;display:flex;align-items:center;gap:7px;
+}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.ok {border-color:#2a5a3a;}
+.toast.err{border-color:#401818;color:var(--red);}
+.toast.warn{border-color:#403018;color:var(--yellow);}
+.toast-icon{font-size:13px;flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<!-- ─── TOP BAR ─── -->
+<div class="topbar">
+  <span class="logo">G1D</span>
+  <span style="color:var(--txt3);font-size:11px">IP</span>
+  <input class="ip-input" id="ipInput" placeholder="192.168.123.163" value="192.168.123.163">
+  <span class="port-tag">:1448</span>
+  <button class="conn-btn" id="connBtn" onclick="doConnect()">连接</button>
+  <div class="sdot" id="sdot"></div>
+  <span class="stext" id="stext">未连接</span>
+  <span class="last-upd" id="lastUpd"></span>
+  <div class="batt-wrap" id="battWrap" style="display:none">
+    <span class="batt-icon" id="battIcon">🔋</span>
+    <span class="batt-pct" id="battPct">—</span>
+    <span class="on-dock-tag" id="dockTag" style="display:none">充电中</span>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ─── LEFT SIDEBAR ─── -->
+<div class="sidebar">
+  <div style="height:6px"></div>
+
+  <div class="sb-section">
+    <div class="sb-title">模式</div>
+    <div class="mode-row">
+      <button class="mbtn mb-map" id="modeMapBtn" onclick="toggleMapping()" disabled>建图</button>
+      <button class="mbtn mb-nav" id="modeNavBtn" onclick="toggleLocalization()"    disabled>导航</button>
+    </div>
+    <div class="mode-hint-strip" id="modeHintSb">连接后选择模式</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-title">快捷操作</div>
+    <button class="btn b-green"  id="btnHome"    onclick="goHome()"      disabled><span class="ico">⚡</span>回充电桩</button>
+    <button class="btn b-yellow" id="btnRegDock" onclick="registerDock()" disabled><span class="ico">🔌</span>注册充电桩</button>
+    <button class="btn b-red"    id="btnEstop"   onclick="doStop()"      disabled><span class="ico">⛔</span>紧急停止</button>
+    <button class="btn b-blue"   id="btnReloc"   onclick="relocalize()"  disabled><span class="ico">📡</span>自动重定位</button>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-title">地图管理</div>
+    <button class="btn b-blue"   id="btnLoad"  onclick="loadMap()"     disabled><span class="ico">📂</span>加载已有地图</button>
+    <button class="btn b-green"  id="btnSave"  onclick="saveMap()"     disabled><span class="ico">💾</span>保存当前地图</button>
+    <button class="btn b-yellow" id="btnClear"  onclick="clearMap()"   disabled><span class="ico">🗑</span>清除显示</button>
+    <button class="btn b-ghost"  id="btnExport" onclick="exportMap()"  disabled><span class="ico">⬇</span>导出 ROS 地图</button>
+    <button class="btn b-ghost"  id="btnResetOrigin" onclick="resetOrigin()" disabled><span class="ico">⊙</span>设当前点为原点</button>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-title">绘制工具</div>
+    <button class="btn b-purple" id="toolArea"  onclick="toggleTool('area')"  disabled><span class="ico">🚫</span>绘制禁行区</button>
+    <button class="btn b-orange" id="toolWall"  onclick="toggleTool('wall')"  disabled><span class="ico">🧱</span>绘制虚拟墙</button>
+    <button class="btn b-blue"   id="toolReloc" onclick="toggleTool('reloc')" disabled><span class="ico">🎯</span>区域重定位</button>
+    <button class="btn b-ghost"  id="toolFit"   onclick="fitMap()"            disabled><span class="ico">⊡</span>适配视图</button>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-title">手动遥控</div>
+    <div class="teleop">
+      <div class="tk ghost"></div>
+      <div class="tk" id="tk-up"    onmousedown="ts(0)" onmouseup="te()" ontouchstart="ts(0);event.preventDefault()" ontouchend="te()">↑</div>
+      <div class="tk ghost"></div>
+      <div class="tk" id="tk-left"  onmousedown="ts(3)" onmouseup="te()" ontouchstart="ts(3);event.preventDefault()" ontouchend="te()">←</div>
+      <div class="tk" id="tk-down"  onmousedown="ts(1)" onmouseup="te()" ontouchstart="ts(1);event.preventDefault()" ontouchend="te()">↓</div>
+      <div class="tk" id="tk-right" onmousedown="ts(2)" onmouseup="te()" ontouchstart="ts(2);event.preventDefault()" ontouchend="te()">→</div>
+    </div>
+    <div class="speed-row">
+      <label>速度上限</label>
+      <input type="number" id="speedLinear" value="0.5" min="0.1" max="2" step="0.1" onchange="applySpeed()">
+      <span>m/s</span>
+    </div>
+    <div class="kb-hint">↑/W 前 &nbsp;↓/S 后 &nbsp;←/A 左转 &nbsp;→/D 右转 &nbsp;任意字母 急停</div>
+  </div>
+</div>
+
+<!-- ─── MAP AREA ─── -->
+<div class="map-area">
+  <div class="map-toolbar">
+    <span class="badge badge-idle" id="modeBadge">空闲</span>
+    <span class="map-hint" id="modeHint">连接后选择模式</span>
+    <div class="zoom-btns">
+      <button class="zoom-btn" onclick="zoomStep(1.25)" title="放大">+</button>
+      <button class="zoom-btn" onclick="zoomStep(0.8)"  title="缩小">−</button>
+      <button class="zoom-btn" onclick="fitMap()"       title="适配">⊡</button>
+      <button class="zoom-btn" id="btnRotate" onclick="rotateMap()" title="旋转90°">↻</button>
+    </div>
+    <span class="coord-display" id="coordDisplay"></span>
+  </div>
+
+  <div class="canvas-wrap" id="canvasWrap">
+    <canvas id="mapCanvas"></canvas>
+
+    <div class="disconn-overlay" id="disconnOverlay">
+      <div class="disconn-icon">📡</div>
+      <div class="disconn-text">连接已中断</div>
+      <div class="disconn-sub" id="disconnSub">地图数据保留自最后一次更新</div>
+    </div>
+
+    <div class="draw-info" id="drawInfo"></div>
+
+    <div class="scale-bar" id="scaleBar" style="display:none">
+      <div class="scale-line" id="scaleLine"></div>
+      <div class="scale-label" id="scaleLabel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── RIGHT PANEL ─── -->
+<div class="rpanel">
+  <div class="rtabs">
+    <div class="rtab active" onclick="switchTab('status')" id="tab-status">状态</div>
+    <div class="rtab"        onclick="switchTab('poi')"    id="tab-poi">POI</div>
+    <div class="rtab"        onclick="switchTab('dock')"   id="tab-dock">充电桩</div>
+    <div class="rtab"        onclick="switchTab('area')"   id="tab-area">区域</div>
+    <div class="rtab"        onclick="switchTab('health')" id="tab-health">健康</div>
+    <div class="rtab"        onclick="switchTab('sem')"    id="tab-sem">语义</div>
+  </div>
+
+  <!-- 状态面板 -->
+  <div class="rpane active" id="pane-status">
+    <div class="card">
+      <div class="card-label">定位质量</div>
+      <div class="card-val" id="rQuality">—</div>
+      <div class="qbar"><div class="qfill" id="qfill"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">当前位置</div>
+      <div class="card-val mono" id="rPose">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">地图信息</div>
+      <div class="card-val mono" id="rMapInfo">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">当前任务</div>
+      <div class="card-val" id="rAction">空闲</div>
+    </div>
+    <div class="card">
+      <div class="card-label">楼层</div>
+      <div class="card-val" id="rFloor">—</div>
+    </div>
+  </div>
+
+  <!-- 语义地图面板 -->
+  <div class="rpane" id="pane-sem">
+    <div class="card">
+      <div class="card-label">语义地图</div>
+      <div class="card-val" id="semStatus" style="font-size:11px">—</div>
+    </div>
+    <div style="font-size:10px;color:var(--txt3);margin-bottom:8px;line-height:1.6">
+      说一句话，在 POI 里找意思最接近的一个（名称 + 描述一起匹配）。描述在 POI 标签页里填写。
+    </div>
+    <input class="poi-name-input" id="semQuery" placeholder="例如：我想喝水" style="width:100%;margin-bottom:6px"
+           onkeydown="if(event.key==='Enter')semSearch(false)">
+    <div class="poi-btns" style="margin-bottom:8px">
+      <button class="poi-btn nav" onclick="semSearch(false)">搜索</button>
+      <button class="poi-btn nav" onclick="semSearch(true)">去那里</button>
+      <button class="poi-btn" onclick="semRebuild()">重建</button>
+    </div>
+    <div id="semResult"></div>
+    <div class="card-label" style="margin:10px 0 4px;display:flex;justify-content:space-between">
+      <span>调试记录</span><button class="poi-btn" style="flex:0 0 auto;padding:1px 8px" onclick="semHistory()">刷新</button>
+    </div>
+    <div id="semHistoryList"><div class="empty-hint">暂无记录</div></div>
+  </div>
+
+  <!-- 健康面板 -->
+  <div class="rpane" id="pane-health">
+    <button class="btn b-ghost" onclick="fetchHealth()" style="width:100%;margin-bottom:8px">刷新</button>
+    <div id="healthList"><div class="empty-hint">点击刷新查看错误</div></div>
+  </div>
+
+  <!-- POI 面板 -->
+  <div class="rpane" id="pane-poi">
+    <div class="add-poi-row">
+      <input class="poi-name-input" id="poiNameInput" placeholder="POI 名称" value="POI">
+      <button class="poi-add-btn" id="btnAddPoi" onclick="addPoiAtCurrent()" disabled>+当前位置</button>
+    </div>
+    <input class="poi-name-input" id="poiDescInput" placeholder="描述（选填，语义地图用，如：可以接水、喝水）"
+           style="width:100%;margin-bottom:8px">
+    <button class="btn b-ghost" id="toolPoi" onclick="toggleTool('poi')" disabled style="margin-bottom:8px">
+      <span class="ico">📌</span>点击地图放置 POI
+    </button>
+    <div id="poiList"><div class="empty-hint">暂无 POI</div></div>
+  </div>
+
+  <!-- 充电桩面板 -->
+  <div class="rpane" id="pane-dock">
+    <div style="font-size:10px;color:var(--txt3);margin-bottom:8px;line-height:1.6">
+      注册前先将底盘<b style="color:var(--yellow)">开到充电桩上</b>，再点注册，精度最高。<br>
+      也可在地图上点击手动指定位置。
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <input class="poi-name-input" id="dockNameInput" placeholder="充电桩名称" value="主充电桩">
+      <button class="poi-add-btn" id="btnRegDock2" onclick="registerDock()" disabled>注册当前</button>
+    </div>
+    <button class="btn b-ghost" id="toolDock" onclick="toggleTool('dock')" disabled style="margin-bottom:8px">
+      <span class="ico">📍</span>点击地图放置充电桩
+    </button>
+    <div class="clear-row">
+      <button class="clear-btn" onclick="clearDocks()">清空全部</button>
+    </div>
+    <div id="dockList"><div class="empty-hint">暂无充电桩</div></div>
+  </div>
+
+  <!-- 区域面板 -->
+  <div class="rpane" id="pane-area">
+    <div style="margin-bottom:6px">
+      <div class="card-label" style="padding:0 2px 4px">禁行区</div>
+      <div class="clear-row">
+        <button class="clear-btn" onclick="clearAreas()">清空全部</button>
+      </div>
+      <div id="areaList"><div class="empty-hint">暂无禁行区</div></div>
+    </div>
+    <div>
+      <div class="card-label" style="padding:4px 2px">虚拟墙</div>
+      <div class="clear-row">
+        <button class="clear-btn" onclick="clearWalls()">清空全部</button>
+      </div>
+      <div id="wallList"><div class="empty-hint">暂无虚拟墙</div></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- .main -->
+<div class="toast" id="toast"><span class="toast-icon" id="toastIcon"></span><span id="toastMsg"></span></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let connected = false;
+// 建图 / 定位 实际状态（两者可同时开，按底盘真实状态亮灭）
+let modeState = {mapping:false, localization:false};
+let drawTool  = null;     // null | 'area' | 'wall' | 'reloc' | 'dock'
+let drawStep  = 0;
+let drawP1    = null;
+let mapRotDeg = 0;        // map view rotation: 0 | 90 | 180 | 270
+
+let mapData    = null;
+let lastMapHash = '';
+let pois  = [], areas = [], walls = [], docks = [];
+let pathPts   = [];
+let navTarget = null;
+
+// camera
+let cam     = {ox:0, oy:0, scale:1};
+let fitDone = false;
+
+// timing
+let lastMapOk    = 0;
+let mapImg       = null;
+let teleopTimer  = null;
+let mapTimer     = null;
+let statusTimer  = null;
+let annoTimer    = null;
+let pathTimer    = null;
+let mapFetchCtrl = null;
+
+// middle-button pan
+let midDragging = false;
+let midLast     = {x:0, y:0};
+// left-button state (nav heading drag or draw click)
+let leftDown    = false;
+let leftDownPos = null;  // canvas coords where pressed
+let leftCurPos  = null;  // canvas coords current
+let leftDidMove = false;
+let mouseCanvas = {x:0, y:0};
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════
+async function post(url, body) {
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  try { return await r.json(); } catch { return {}; }
+}
+
+async function put(url, body) {
+  const r = await fetch(url, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  try { return await r.json(); } catch { return {}; }
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let toastTimer = null;
+function toast(msg, type='') {
+  const icons = {ok:'✓', err:'✗', warn:'⚠'};
+  document.getElementById('toastIcon').textContent = icons[type] || '';
+  document.getElementById('toastMsg').textContent  = msg;
+  const el = document.getElementById('toast');
+  el.className = 'toast show' + (type ? ' '+type : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function setBtnDisabled(id, disabled) {
+  const el = document.getElementById(id);
+  if (el) el.disabled = disabled;
+}
+
+function isEnabled(val) {
+  if (val == null) return false;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'object')  return val.enable === true || val.enabled === true;
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONNECT
+// ═══════════════════════════════════════════════════════════════
+async function doConnect() {
+  const btn = document.getElementById('connBtn');
+  if (connected) {
+    // Disconnect
+    connected = false;
+    modeState = {mapping:false, localization:false};
+    clearInterval(mapTimer); clearInterval(statusTimer);
+    clearInterval(annoTimer); clearInterval(pathTimer);
+    setConnState('', '未连接');
+    btn.textContent = '连接';
+    btn.classList.remove('conn-disconnect');
+    syncModeButtons();
+    updateButtonStates();
+    toast('已断开连接');
+    return;
+  }
+  const ip = document.getElementById('ipInput').value.trim();
+  if (!ip) return;
+  btn.disabled = true; btn.textContent = '连接中…';
+  setConnState('', '连接中…');
+  try {
+    const r = await post('/api/connect', {ip});
+    if (r.ok) {
+      connected   = true;
+      lastMapHash = '';
+      fitDone     = false;
+      setConnState('ok', '已连接 ' + ip);
+      btn.textContent = '断开';
+      btn.classList.add('conn-disconnect');
+      updateButtonStates();
+      startPolling();
+      toast('连接成功', 'ok');
+    } else {
+      setConnState('err', '连接失败');
+      toast(r.error || '无法连接到底盘', 'err');
+      btn.textContent = '连接';
+    }
+  } catch(e) {
+    setConnState('err', '连接失败');
+    toast(String(e), 'err');
+    btn.textContent = '连接';
+  }
+  btn.disabled = false;
+}
+
+function setConnState(s, msg) {
+  document.getElementById('sdot').className =
+    'sdot' + (s==='ok'?'  ok':s==='err'?' err':s==='stale'?' stale':'');
+  document.getElementById('stext').textContent = msg;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUTTON STATE (mode-aware)
+// ═══════════════════════════════════════════════════════════════
+function updateButtonStates() {
+  const E = connected;
+  [
+    'modeMapBtn','modeNavBtn','btnEstop','btnHome','btnRegDock','btnRegDock2',
+    'btnReloc','toolFit','btnLoad','btnSave','btnClear','btnExport','btnResetOrigin',
+    'toolArea','toolWall','toolDock','toolReloc','toolPoi','btnAddPoi',
+  ].forEach(id => setBtnDisabled(id, !E));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// POLLING
+// ═══════════════════════════════════════════════════════════════
+function startPolling() {
+  clearInterval(mapTimer);
+  clearInterval(statusTimer);
+  clearInterval(annoTimer);
+  fetchMap();
+  fetchStatus();
+  fetchAnnotations();
+  mapTimer    = setInterval(fetchMap,    1200);
+  statusTimer = setInterval(fetchStatus, 3000);
+  annoTimer   = setInterval(fetchAnnotations, 6000);
+}
+
+async function fetchMap() {
+  if (!connected) return;
+  // Cancel any in-flight map request
+  if (mapFetchCtrl) mapFetchCtrl.abort();
+  mapFetchCtrl = new AbortController();
+  try {
+    const r = await fetch('/api/map?h=' + lastMapHash, {signal: mapFetchCtrl.signal});
+    if (!r.ok) { markStale(); return; }
+    const d = await r.json();
+    if (d.error) { markStale(); return; }
+    if (d.empty) {
+      lastMapOk = Date.now(); updateConnHealth();
+      applyModeState(d);   // 空地图也要反映建图/定位真实状态
+      return;
+    }
+
+    lastMapOk = Date.now();
+    updateConnHealth();
+
+    if (d.unchanged) {
+      // Map grid unchanged — only update dynamic fields
+      if (mapData) {
+        mapData.pose         = d.pose;
+        mapData.quality      = d.quality;
+        mapData.mapping      = d.mapping;
+        mapData.localization = d.localization;
+      }
+    } else {
+      // New map image
+      lastMapHash = d.hash || '';
+      mapData = d;
+      loadMapImage(d.img);
+      fetchPath();
+    }
+    applyModeState(d);
+    updateMapPanel(mapData || d);
+    redraw();
+  } catch(e) {
+    if (e.name !== 'AbortError') markStale();
+  }
+}
+
+async function fetchStatus() {
+  if (!connected) return;
+  try {
+    const d = await (await fetch('/api/status')).json();
+    updateStatusPanel(d);
+  } catch(e) {}
+}
+
+async function fetchAnnotations() {
+  if (!connected) return;
+  try {
+    const d = await (await fetch('/api/annotations')).json();
+    pois  = Array.isArray(d.pois)  ? d.pois  : [];
+    areas = Array.isArray(d.areas) ? d.areas : [];
+    walls = Array.isArray(d.walls) ? d.walls : [];
+    docks = Array.isArray(d.docks) ? d.docks : [];
+    renderPoiList();
+    renderAreaList();
+    renderDockList();
+    redraw();
+  } catch(e) {}
+}
+
+async function fetchPath() {
+  if (!navTarget) return;
+  try {
+    const d = await (await fetch('/api/path')).json();
+    pathPts = Array.isArray(d) ? d : [];
+    redraw();
+  } catch(e) {}
+}
+
+function markStale() {
+  if (!lastMapOk) return;
+  const ago = Math.round((Date.now() - lastMapOk) / 1000);
+  if (ago > 20) {
+    setConnState('err', '已断开');
+    document.getElementById('disconnOverlay').classList.add('show');
+    document.getElementById('disconnSub').textContent = `最后更新 ${ago}s 前，地图已保留`;
+  } else if (ago > 6) {
+    setConnState('stale', '数据过期');
+    document.getElementById('disconnOverlay').classList.add('show');
+    document.getElementById('disconnSub').textContent = `最后更新 ${ago}s 前，地图已保留`;
+  }
+}
+
+function updateConnHealth() {
+  const ago = (Date.now() - lastMapOk) / 1000;
+  if (ago < 5) {
+    setConnState('ok', '已连接');
+    document.getElementById('disconnOverlay').classList.remove('show');
+  }
+  document.getElementById('lastUpd').textContent = `${Math.round(ago)}s 前`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAP IMAGE & CAMERA
+// ═══════════════════════════════════════════════════════════════
+function loadMapImage(b64) {
+  const img = new Image();
+  img.onload = () => {
+    const needFit = !fitDone && mapData;
+    mapImg = img;
+    if (needFit) { fitMap(); fitDone = true; }
+    else redraw();
+  };
+  img.src = 'data:image/png;base64,' + b64;
+}
+
+function fitMap() {
+  if (!mapImg || !mapData) return;
+  const wrap = document.getElementById('canvasWrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  const sx = W / mapData.cols, sy = H / mapData.rows;
+  cam.scale = Math.min(sx, sy) * 0.90;
+  cam.ox = (W - mapData.cols * cam.scale) / 2;
+  cam.oy = (H - mapData.rows * cam.scale) / 2;
+  redraw();
+}
+
+function rotateMap() {
+  mapRotDeg = (mapRotDeg + 90) % 360;
+  document.getElementById('btnRotate').textContent = mapRotDeg ? `↻${mapRotDeg}°` : '↻';
+  redraw();
+}
+
+function zoomStep(factor) {
+  const wrap = document.getElementById('canvasWrap');
+  zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, factor);
+}
+
+function zoomAt(cx, cy, factor) {
+  cam.ox = cx - (cx - cam.ox) * factor;
+  cam.oy = cy - (cy - cam.oy) * factor;
+  cam.scale *= factor;
+  redraw();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REDRAW
+// ═══════════════════════════════════════════════════════════════
+function redraw() {
+  const canvas = document.getElementById('mapCanvas');
+  const wrap   = document.getElementById('canvasWrap');
+  if (canvas.width !== wrap.clientWidth || canvas.height !== wrap.clientHeight) {
+    canvas.width  = wrap.clientWidth;
+    canvas.height = wrap.clientHeight;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!mapImg || !mapData) {
+    ctx.fillStyle = '#1a1a2a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#444466';
+    ctx.font = '13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(connected ? '未开启任何模式' : '连接底盘后选择模式', canvas.width/2, canvas.height/2);
+    return;
+  }
+
+  // 深色背景 + 径向渐变晕染
+  const vignette = ctx.createRadialGradient(
+    canvas.width/2, canvas.height/2, Math.min(canvas.width, canvas.height) * 0.25,
+    canvas.width/2, canvas.height/2, Math.max(canvas.width, canvas.height) * 0.75
+  );
+  vignette.addColorStop(0, '#2a2a2a');
+  vignette.addColorStop(1, '#0a0a0a');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  if (mapRotDeg) {
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(mapRotDeg * Math.PI / 180);
+    ctx.translate(-canvas.width / 2, -canvas.height / 2);
+  }
+  ctx.translate(cam.ox, cam.oy);
+  ctx.scale(cam.scale, cam.scale);
+
+  // Map image (white=free, black=obstacle, gray=unknown)
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(mapImg, 0, 0, mapData.cols, mapData.rows);
+
+  // Forbidden areas
+  for (const a of areas) drawForbiddenArea(ctx, a);
+
+  // Virtual walls
+  for (const w of walls) drawVirtualWall(ctx, w);
+
+  // Planned path
+  if (pathPts.length > 1) {
+    ctx.beginPath();
+    pathPts.forEach((p,i) => {
+      const g = worldToGrid(p.x, p.y);
+      i===0 ? ctx.moveTo(g.x, g.y) : ctx.lineTo(g.x, g.y);
+    });
+    ctx.strokeStyle = '#5ab4f080';
+    ctx.lineWidth   = 3 / cam.scale;
+    ctx.setLineDash([6/cam.scale, 4/cam.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Charging docks
+  for (const d of docks) drawDock(ctx, d);
+
+  // POI markers
+  for (const p of pois) drawPoi(ctx, p);
+
+  // Nav target
+  if (navTarget) drawTarget(ctx, navTarget);
+
+  // Robot
+  if (mapData.pose) drawRobot(ctx, mapData.pose);
+
+  // Drag preview: nav heading (no tool) or POI direction drag
+  if (leftDown && (!drawTool || drawTool === 'poi')) drawNavDragPreview(ctx);
+
+  // Draw tool preview
+  if (drawStep === 1 && drawP1) drawPreview(ctx);
+
+  ctx.restore();
+  updateScaleBar(canvas);
+}
+
+// ── Coordinate helpers ──
+function worldToGrid(wx, wy) {
+  const gc  = (wx - mapData.x0) / mapData.res;
+  const grO = (wy - mapData.y0) / mapData.res;
+  return { x: gc, y: mapData.rows - 1 - grO };
+}
+function gridToCanvas(gx, gy) {
+  return { x: cam.ox + gx * cam.scale, y: cam.oy + gy * cam.scale };
+}
+function canvasToGrid(cx, cy) {
+  if (mapRotDeg) {
+    const canvas = document.getElementById('mapCanvas');
+    const hw = canvas.width / 2, hh = canvas.height / 2;
+    const rad = -mapRotDeg * Math.PI / 180;
+    const dx = cx - hw, dy = cy - hh;
+    cx = dx * Math.cos(rad) - dy * Math.sin(rad) + hw;
+    cy = dx * Math.sin(rad) + dy * Math.cos(rad) + hh;
+  }
+  return { x: (cx - cam.ox) / cam.scale, y: (cy - cam.oy) / cam.scale };
+}
+function canvasToWorld(cx, cy) {
+  const g = canvasToGrid(cx, cy);
+  const grO = mapData.rows - 1 - g.y;
+  return { x: mapData.x0 + g.x * mapData.res, y: mapData.y0 + grO * mapData.res };
+}
+
+// ── Draw primitives ──
+function drawRobot(ctx, pose) {
+  const g  = worldToGrid(pose.x, pose.y);
+  const res = mapData.res;
+  const hw = 0.557 / 2 / res;   // 半宽（左右）
+  const hd = 0.525 / 2 / res;   // 半深（前后）
+  const cr = Math.max(2, Math.min(hw, hd) * 0.18);  // 圆角半径
+
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(-(pose.yaw || 0));
+
+  // 机身
+  ctx.shadowColor = '#5ab4f088';
+  ctx.shadowBlur  = 10 / cam.scale;
+  ctx.beginPath();
+  ctx.roundRect(-hd, -hw, hd * 2, hw * 2, cr);
+  ctx.fillStyle = '#1a3a5a';
+  ctx.fill();
+  ctx.strokeStyle = '#5ab4f0';
+  ctx.lineWidth   = 1.5 / cam.scale;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // 正面高亮条
+  ctx.beginPath();
+  ctx.roundRect(hd - cr * 1.2, -hw + cr, cr * 1.2, (hw - cr) * 2, [0, cr, cr, 0]);
+  ctx.fillStyle = '#5ab4f0';
+  ctx.fill();
+
+  // 中心点
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(1.5, 2.5 / cam.scale), 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPoi(ctx, poi) {
+  if (!poi.pose) return;
+  const g = worldToGrid(poi.pose.x, poi.pose.y);
+  const r = Math.max(4, 0.15 / mapData.res);
+  const name = (poi.metadata && poi.metadata.display_name) || poi.id.slice(0,6);
+  ctx.beginPath();
+  ctx.arc(g.x, g.y, r, 0, Math.PI*2);
+  ctx.fillStyle   = '#a07af0cc';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = 1.5 / cam.scale;
+  ctx.stroke();
+  // Draw heading arrow if yaw is stored
+  if (poi.pose.yaw != null) {
+    const yaw = poi.pose.yaw;
+    const ax = Math.cos(yaw), ay = -Math.sin(yaw); // canvas Y flip
+    const al = r * 2.2;
+    const hw = 3 / cam.scale, px = -ay, py = ax;
+    ctx.save(); ctx.translate(g.x, g.y);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ax*al, ay*al);
+    ctx.strokeStyle = '#e8b84b'; ctx.lineWidth = 2/cam.scale; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ax*al, ay*al);
+    ctx.lineTo(ax*al - ax*hw + px*hw*.6, ay*al - ay*hw + py*hw*.6);
+    ctx.lineTo(ax*al - ax*hw - px*hw*.6, ay*al - ay*hw - py*hw*.6);
+    ctx.closePath(); ctx.fillStyle = '#e8b84b'; ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#222';
+  ctx.font      = `bold ${Math.max(8, 10/cam.scale)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText(name, g.x, g.y - r - 3/cam.scale);
+}
+
+function drawTarget(ctx, t) {
+  const g = worldToGrid(t.x, t.y);
+  const r = Math.max(5, 0.2 / mapData.res);
+  ctx.beginPath();
+  ctx.arc(g.x, g.y, r, 0, Math.PI*2);
+  ctx.fillStyle   = '#a07af044';
+  ctx.fill();
+  ctx.strokeStyle = '#a07af0';
+  ctx.lineWidth   = 2 / cam.scale;
+  ctx.stroke();
+  const cr = r * 1.8;
+  ctx.beginPath();
+  ctx.moveTo(g.x-cr, g.y); ctx.lineTo(g.x+cr, g.y);
+  ctx.moveTo(g.x, g.y-cr); ctx.lineTo(g.x, g.y+cr);
+  ctx.strokeStyle = '#a07af0';
+  ctx.lineWidth   = 1.5 / cam.scale;
+  ctx.stroke();
+  // Heading arrow when yaw is specified
+  if (t.yaw != null) {
+    const al = r * 3;
+    const ax = Math.cos(t.yaw), ay = -Math.sin(t.yaw); // -sin: canvas Y flipped
+    const hw = 5 / cam.scale, px = -ay, py = ax;
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ax*al, ay*al);
+    ctx.strokeStyle = '#e8b84b'; ctx.lineWidth = 2.5/cam.scale; ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ax*al, ay*al);
+    ctx.lineTo(ax*al - ax*hw + px*hw*.6, ay*al - ay*hw + py*hw*.6);
+    ctx.lineTo(ax*al - ax*hw - px*hw*.6, ay*al - ay*hw - py*hw*.6);
+    ctx.closePath(); ctx.fillStyle = '#e8b84b'; ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawNavDragPreview(ctx) {
+  if (!leftDown || !leftDownPos || !mapData) return;
+  const wS = canvasToWorld(leftDownPos.x, leftDownPos.y);
+  const g1 = worldToGrid(wS.x, wS.y);
+  const r  = Math.max(5, 0.2 / mapData.res);
+  ctx.beginPath(); ctx.arc(g1.x, g1.y, r, 0, Math.PI*2);
+  ctx.strokeStyle = '#a07af0cc'; ctx.lineWidth = 2/cam.scale; ctx.stroke();
+  if (leftDidMove && leftCurPos) {
+    const wC = canvasToWorld(leftCurPos.x, leftCurPos.y);
+    const dx = wC.x-wS.x, dy = wC.y-wS.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if (dist > 0.05) {
+      const yaw = Math.atan2(dy,dx);
+      const ax  = Math.cos(yaw), ay = -Math.sin(yaw);
+      const al  = Math.min(dist/mapData.res*.7, r*6);
+      const hw  = 5/cam.scale, px = -ay, py = ax;
+      ctx.save(); ctx.translate(g1.x, g1.y);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ax*al,ay*al);
+      ctx.strokeStyle='#e8b84bcc'; ctx.lineWidth=2.5/cam.scale; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ax*al,ay*al);
+      ctx.lineTo(ax*al-ax*hw+px*hw*.6, ay*al-ay*hw+py*hw*.6);
+      ctx.lineTo(ax*al-ax*hw-px*hw*.6, ay*al-ay*hw-py*hw*.6);
+      ctx.closePath(); ctx.fillStyle='#e8b84bcc'; ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function drawForbiddenArea(ctx, area) {
+  const {start, end, half_width:hw} = area.area;
+  if (!start || !end) return;
+  const dx = end.x-start.x, dy = end.y-start.y;
+  const len = Math.sqrt(dx*dx+dy*dy);
+  if (len < 0.001 && hw < 0.001) return;
+  const nx = len>0 ? -dy/len : 1, ny = len>0 ? dx/len : 0;
+  const corners = [
+    worldToGrid(start.x + nx*hw, start.y + ny*hw),
+    worldToGrid(start.x - nx*hw, start.y - ny*hw),
+    worldToGrid(end.x   - nx*hw, end.y   - ny*hw),
+    worldToGrid(end.x   + nx*hw, end.y   + ny*hw),
+  ];
+  ctx.beginPath();
+  corners.forEach((c,i) => i===0 ? ctx.moveTo(c.x,c.y) : ctx.lineTo(c.x,c.y));
+  ctx.closePath();
+  ctx.fillStyle   = 'rgba(220,50,50,0.18)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(220,50,50,0.75)';
+  ctx.lineWidth   = 1.5 / cam.scale;
+  ctx.setLineDash([4/cam.scale, 3/cam.scale]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawDock(ctx, dock) {
+  if (!dock.pose) return;
+  const g   = worldToGrid(dock.pose.x, dock.pose.y);
+  const r   = Math.max(5, 0.2 / mapData.res);
+  const name = (dock.metadata && dock.metadata.display_name) || '充电桩';
+  const yaw = dock.pose.yaw || 0;
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(-yaw);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI*2);
+  ctx.fillStyle   = '#1e4030';
+  ctx.fill();
+  ctx.strokeStyle = '#3ec89a';
+  ctx.lineWidth   = 2 / cam.scale;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(r*2, 0);
+  ctx.strokeStyle = '#3ec89a';
+  ctx.lineWidth   = 2 / cam.scale;
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#222';
+  ctx.font      = `bold ${Math.max(8, 10/cam.scale)}px system-ui`;
+  ctx.textAlign = 'center';
+  ctx.fillText('⚡'+name, g.x, g.y - r - 3/cam.scale);
+}
+
+function drawVirtualWall(ctx, wall) {
+  const start = wall.start;
+  const end   = wall.end;
+  if (!start || !end) return;
+  const s = worldToGrid(start.x, start.y);
+  const e = worldToGrid(end.x,   end.y);
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y); ctx.lineTo(e.x, e.y);
+  ctx.strokeStyle = 'rgba(255,80,0,0.95)';
+  ctx.lineWidth   = 3 / cam.scale;
+  ctx.stroke();
+  [s,e].forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4/cam.scale, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,80,0,0.95)';
+    ctx.fill();
+  });
+}
+
+function drawPreview(ctx) {
+  const wp = canvasToWorld(mouseCanvas.x, mouseCanvas.y);
+  if (drawTool === 'area') {
+    const g1 = worldToGrid(drawP1.x, drawP1.y);
+    const g2 = worldToGrid(wp.x, wp.y);
+    ctx.beginPath();
+    ctx.rect(Math.min(g1.x,g2.x), Math.min(g1.y,g2.y),
+             Math.abs(g2.x-g1.x), Math.abs(g2.y-g1.y));
+    ctx.fillStyle   = 'rgba(220,50,50,0.12)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220,50,50,0.8)';
+    ctx.lineWidth   = 1.5 / cam.scale;
+    ctx.setLineDash([4/cam.scale, 3/cam.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (drawTool === 'wall') {
+    const g1 = worldToGrid(drawP1.x, drawP1.y);
+    const g2 = worldToGrid(wp.x, wp.y);
+    ctx.beginPath();
+    ctx.moveTo(g1.x, g1.y); ctx.lineTo(g2.x, g2.y);
+    ctx.strokeStyle = 'rgba(224,120,50,0.85)';
+    ctx.lineWidth   = 2.5 / cam.scale;
+    ctx.stroke();
+  } else if (drawTool === 'reloc') {
+    const g1 = worldToGrid(drawP1.x, drawP1.y);
+    const g2 = worldToGrid(wp.x, wp.y);
+    ctx.beginPath();
+    ctx.rect(Math.min(g1.x,g2.x), Math.min(g1.y,g2.y),
+             Math.abs(g2.x-g1.x), Math.abs(g2.y-g1.y));
+    ctx.fillStyle   = 'rgba(90,180,240,0.12)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(90,180,240,0.85)';
+    ctx.lineWidth   = 1.5 / cam.scale;
+    ctx.setLineDash([5/cam.scale, 3/cam.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCALE BAR
+// ═══════════════════════════════════════════════════════════════
+function updateScaleBar(canvas) {
+  if (!mapData) return;
+  const bar   = document.getElementById('scaleBar');
+  const line  = document.getElementById('scaleLine');
+  const label = document.getElementById('scaleLabel');
+  bar.style.display = 'flex';
+  const metersPerPx = mapData.res / cam.scale;
+  const rawMeters   = 100 * metersPerPx;
+  const nice = [0.1,0.2,0.5,1,2,5,10,20,50,100].find(v => v >= rawMeters) || 100;
+  const px   = nice / metersPerPx;
+  line.style.width  = Math.round(px) + 'px';
+  label.textContent = nice >= 1 ? nice + ' m' : (nice*100).toFixed(0) + ' cm';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CANVAS EVENTS  (middle=pan, left=draw/nav+heading)
+// ═══════════════════════════════════════════════════════════════
+const canvas = document.getElementById('mapCanvas');
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.15 : 1/1.15);
+}, {passive:false});
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  if (e.button === 1) {                       // middle → pan
+    midDragging = true;
+    midLast     = {x: e.offsetX, y: e.offsetY};
+    canvas.style.cursor = 'grabbing';
+  } else if (e.button === 0) {               // left → draw or nav
+    leftDown    = true;
+    leftDidMove = false;
+    leftDownPos = {x: e.offsetX, y: e.offsetY};
+    leftCurPos  = {x: e.offsetX, y: e.offsetY};
+    if ((!drawTool || drawTool === 'poi') && mapData) redraw();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  mouseCanvas = {x: e.offsetX, y: e.offsetY};
+
+  if (midDragging) {
+    let dx = e.offsetX - midLast.x;
+    let dy = e.offsetY - midLast.y;
+    if (mapRotDeg) {
+      const rad = -mapRotDeg * Math.PI / 180;
+      const rdx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const rdy = dx * Math.sin(rad) + dy * Math.cos(rad);
+      dx = rdx; dy = rdy;
+    }
+    cam.ox += dx; cam.oy += dy;
+    midLast = {x: e.offsetX, y: e.offsetY};
+    redraw();
+  }
+
+  if (leftDown) {
+    leftCurPos = {x: e.offsetX, y: e.offsetY};
+    const dx = leftCurPos.x - leftDownPos.x, dy = leftCurPos.y - leftDownPos.y;
+    if (Math.abs(dx)+Math.abs(dy) > 5) leftDidMove = true;
+    if (leftDidMove && (!drawTool || drawTool === 'poi')) redraw();
+  } else if (drawStep === 1) {
+    redraw(); // update draw preview
+  }
+
+  if (mapData) {
+    const w = canvasToWorld(e.offsetX, e.offsetY);
+    document.getElementById('coordDisplay').textContent = `x:${w.x.toFixed(2)} y:${w.y.toFixed(2)}`;
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  e.preventDefault();
+  if (e.button === 1) {
+    midDragging = false;
+    canvas.style.cursor = (canNav() && !drawTool) ? 'crosshair' : 'default';
+    return;
+  }
+  if (e.button !== 0 || !leftDown) return;
+  leftDown = false;
+  if (!mapData) { leftDownPos = leftCurPos = null; leftDidMove = false; return; }
+
+  if (drawTool === 'poi') {
+    const world = canvasToWorld(leftDownPos.x, leftDownPos.y);
+    if (leftDidMove) {
+      const wCur = canvasToWorld(e.offsetX, e.offsetY);
+      const dx = wCur.x - world.x, dy = wCur.y - world.y;
+      const yaw = Math.sqrt(dx*dx+dy*dy) > 0.05 ? Math.atan2(dy, dx) : null;
+      commitPoiPlace(world, yaw);
+    } else {
+      commitPoiPlace(world, null);
+    }
+  } else if (drawTool) {
+    // Register at the press position regardless of mouse drift
+    handleDrawClick(leftDownPos.x, leftDownPos.y);
+  } else if (connected && mapData && !canNav()) {
+    toast('请先开启「导航」定位再点击地图', 'warn');
+  } else if (connected && mapData) {
+    const world = canvasToWorld(leftDownPos.x, leftDownPos.y);
+    if (leftDidMove) {
+      const wCur = canvasToWorld(e.offsetX, e.offsetY);
+      const dx = wCur.x - world.x, dy = wCur.y - world.y;
+      if (Math.sqrt(dx*dx+dy*dy) > 0.05) {
+        navigateTo(world.x, world.y, Math.atan2(dy, dx));
+      } else {
+        navigateTo(world.x, world.y);
+      }
+    } else {
+      navigateTo(world.x, world.y);
+    }
+  }
+  leftDownPos = leftCurPos = null; leftDidMove = false;
+  redraw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  midDragging = false;
+  if (leftDown) { leftDown = false; leftDownPos = leftCurPos = null; leftDidMove = false; redraw(); }
+});
+
+function handleDrawClick(cx, cy) {
+  if (!mapData) return;
+  const world = canvasToWorld(cx, cy);
+  if (drawTool === 'dock') { commitDockPlace(world); return; }
+  if (drawTool === 'poi')  { commitPoiPlace(world);  return; }
+  if (drawStep === 0) {
+    drawP1 = world; drawStep = 1; updateDrawInfo();
+  } else {
+    commitDraw(drawP1, world);
+    drawStep = 0; drawP1 = null; updateDrawInfo();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DRAW TOOLS
+// ═══════════════════════════════════════════════════════════════
+function toggleTool(tool) {
+  const ALL = ['toolArea','toolWall','toolReloc','toolDock','toolPoi'];
+  if (drawTool === tool) {
+    drawTool = null; drawStep = 0; drawP1 = null;
+    ALL.forEach(id => document.getElementById(id)?.classList.remove('tool-active'));
+    document.getElementById('drawInfo').classList.remove('show');
+    canvas.style.cursor = canNav() ? 'crosshair' : 'default';
+  } else {
+    drawTool = tool; drawStep = 0; drawP1 = null;
+    ALL.forEach(id => {
+      document.getElementById(id)?.classList.toggle('tool-active', id === 'tool'+cap(tool));
+    });
+    canvas.style.cursor = 'cell';
+    updateDrawInfo();
+  }
+}
+
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function updateDrawInfo() {
+  const el = document.getElementById('drawInfo');
+  if (!drawTool) { el.classList.remove('show'); return; }
+  el.classList.add('show');
+  el.className = 'draw-info show' + (drawTool === 'reloc' ? ' reloc-mode' : '');
+  const msgs = {
+    area:  ['点击第一个角点', '点击对角点完成禁行区'],
+    wall:  ['点击墙的起点', '点击墙的终点'],
+    reloc: ['框选重定位搜索区域（点第一个角）', '点对角完成——将在此区域内重定位'],
+    dock:  ['点击地图放置充电桩（手动，精度低于注册）', ''],
+    poi:   ['点击放置 POI；按住拖动松开 = 设定到达朝向', ''],
+  };
+  el.textContent = (msgs[drawTool] || ['',''])[drawStep];
+}
+
+async function commitDraw(p1, p2) {
+  if (drawTool === 'area') {
+    const r = await post('/api/areas', {x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y});
+    toast(r?.error ? '禁行区添加失败: '+r.error : '禁行区已添加', r?.error ? 'err' : 'ok');
+    fetchAnnotations();
+  } else if (drawTool === 'wall') {
+    const r = await post('/api/walls', {x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y});
+    toast(r?.error ? '虚拟墙添加失败: '+r.error : '虚拟墙已添加', r?.error ? 'err' : 'ok');
+    fetchAnnotations();
+  } else if (drawTool === 'reloc') {
+    commitReloc(p1, p2);
+  }
+}
+
+async function commitPoiPlace(p, yaw = null) {
+  const name = document.getElementById('poiNameInput')?.value.trim() || String(nextPoiNum());
+  const description = document.getElementById('poiDescInput')?.value.trim() || '';
+  const body = {id: name, name, description, x: p.x, y: p.y};
+  if (yaw !== null) body.yaw = yaw;
+  const r = await post('/api/pois', body);
+  toast(r?.error ? 'POI 添加失败' : `POI「${name}」已放置`, r?.error ? 'err' : 'ok');
+  fetchAnnotations();
+}
+
+async function commitReloc(p1, p2) {
+  const btn = document.getElementById('toolReloc');
+  if (btn) btn.classList.add('btn-loading');
+  try {
+    await post('/api/relocalize', {x1:p1.x, y1:p1.y, x2:p2.x, y2:p2.y});
+    toast(`区域重定位已启动`, 'ok');
+  } catch(e) {
+    toast('重定位失败', 'err');
+  } finally {
+    if (btn) btn.classList.remove('btn-loading');
+  }
+  toggleTool('reloc');
+}
+
+async function commitDockPlace(p) {
+  const name = document.getElementById('dockNameInput')?.value.trim() || '充电桩';
+  if (!mapData?.pose) toast('当前朝向未知，yaw 设为 0', 'warn');
+  const yaw = mapData?.pose?.yaw || 0;
+  await post('/api/docks', {x:p.x, y:p.y, yaw, name});
+  toast(`充电桩「${name}」已放置`, 'ok');
+  fetchAnnotations();
+  toggleTool('dock');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODE — 建图 / 定位 独立开关，按底盘真实状态亮灭
+// ═══════════════════════════════════════════════════════════════
+function canNav() {
+  return connected && (modeState.localization || modeState.mapping);
+}
+
+// 从 /api/map 任意响应里同步真实模式状态
+function applyModeState(d) {
+  if (d && 'mapping' in d)      modeState.mapping      = isEnabled(d.mapping);
+  if (d && 'localization' in d) modeState.localization = isEnabled(d.localization);
+  syncModeButtons();
+}
+
+async function toggleMapping() {
+  const btn = document.getElementById('modeMapBtn');
+  const target = !modeState.mapping;
+  btn.classList.add('btn-loading');
+  try {
+    await put('/api/mapping/enable', {enable: target});
+    modeState.mapping = target;          // 乐观更新，下次轮询会校正
+    syncModeButtons();
+    toast(target ? '建图已开启 — 遥控探索' : '建图已关闭', 'ok');
+    fetchMap();
+  } catch(e) {
+    toast('建图切换失败', 'err');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+async function toggleLocalization() {
+  const btn = document.getElementById('modeNavBtn');
+  const target = !modeState.localization;
+  btn.classList.add('btn-loading');
+  try {
+    await put('/api/localization/enable', {enable: target});
+    modeState.localization = target;
+    syncModeButtons();
+    toast(target ? '导航定位已开启 — 点击地图发目标' : '导航定位已关闭', 'ok');
+    fetchMap();
+  } catch(e) {
+    toast('定位切换失败', 'err');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+function syncModeButtons() {
+  const badge = document.getElementById('modeBadge');
+  const hint  = document.getElementById('modeHint');
+  const hintSb = document.getElementById('modeHintSb');
+  const mMap  = document.getElementById('modeMapBtn');
+  const mNav  = document.getElementById('modeNavBtn');
+
+  const mapOn = connected && modeState.mapping;
+  const locOn = connected && modeState.localization;
+  mMap.classList.toggle('active', mapOn);
+  mNav.classList.toggle('active', locOn);
+
+  if (!connected) {
+    badge.textContent = '未连接'; badge.className = 'badge badge-idle';
+    hint.textContent  = '连接底盘后开启建图或导航';
+    hintSb.textContent = '连接后开启模式';
+    canvas.style.cursor = 'default';
+    return;
+  }
+
+  let label, cls;
+  if (mapOn && locOn)  { label = '建图 + 定位'; cls = 'badge-map'; }
+  else if (mapOn)      { label = '建图中';      cls = 'badge-map'; }
+  else if (locOn)      { label = '导航';        cls = 'badge-nav'; }
+  else                 { label = '未开启模式';  cls = 'badge-idle'; }
+  badge.textContent = label; badge.className = 'badge ' + cls;
+
+  if (!drawTool) {
+    hint.textContent = locOn ? '点击地图导航  |  拖动设定到达朝向'
+                     : mapOn ? '遥控建图探索'
+                     : '开启导航后可点击地图发送目标';
+  }
+  hintSb.textContent = (mapOn || locOn)
+    ? '建图 / 导航可独立开关，二者可同时开'
+    : '点「建图」或「导航」开启，二者可同时开';
+
+  canvas.style.cursor = (canNav() && !drawTool) ? 'crosshair' : 'default';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAP ACTIONS
+// ═══════════════════════════════════════════════════════════════
+async function exportMap() {
+  if (!mapData) { toast('无地图数据', 'warn'); return; }
+  const btn = document.getElementById('btnExport');
+  btn.classList.add('btn-loading');
+  toast('正在导出地图...', 'ok');
+  try {
+    const r = await fetch('/api/map/export', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      const stcm = d.stcm ? '' : '（stcm 获取失败，仅 ROS 文件）';
+      toast(`已导出 ${d.name} → map/ 文件夹 ${stcm}`, 'ok');
+    } else {
+      toast('导出失败：' + (d.error || '未知'), 'err');
+    }
+  } catch(e) {
+    toast('导出失败', 'err');
+  } finally {
+    btn.classList.remove('btn-loading');
+  }
+}
+
+async function saveMap() {
+  const btn = document.getElementById('btnSave');
+  btn.classList.add('btn-loading');
+  try {
+    await post('/api/mapping/save');
+    toast('地图已保存', 'ok');
+  } catch(e) { toast('保存失败', 'err'); }
+  finally { btn.classList.remove('btn-loading'); }
+}
+
+async function loadMap(silent = false) {
+  const btn = document.getElementById('btnLoad');
+  btn.classList.add('btn-loading');
+  try {
+    await post('/api/map/load');
+    lastMapHash = '';
+    if (!silent) toast('地图加载中…', 'ok');
+  } catch(e) { toast('加载失败', 'err'); }
+  finally { btn.classList.remove('btn-loading'); }
+}
+
+async function goHome() {
+  const btn = document.getElementById('btnHome');
+  btn.classList.add('btn-loading');
+  try {
+    await post('/api/home');
+    navTarget = null;
+    toast('正在返回充电桩', 'ok');
+  } catch(e) { toast('回桩指令失败', 'err'); }
+  finally { btn.classList.remove('btn-loading'); }
+}
+
+async function relocalize() {
+  const btn = document.getElementById('btnReloc');
+  btn.classList.add('btn-loading');
+  try {
+    await post('/api/relocalize', {});
+    toast('全图自动重定位已启动', 'ok');
+  } catch(e) { toast('重定位失败', 'err'); }
+  finally { btn.classList.remove('btn-loading'); }
+}
+
+async function clearMap() {
+  if (!confirm('清除前端显示 + 底盘内存地图？\n磁盘上的已保存地图不受影响，可用「加载地图」恢复。')) return;
+  await fetch('/api/map/clear', {method: 'DELETE'});
+  mapImg = null; mapData = null; fitDone = false; lastMapHash = '';
+  pois = []; areas = []; walls = []; docks = [];
+  renderPoiList(); renderAreaList(); renderDockList();
+  redraw();
+  toast('前端 + 内存地图已清除，磁盘地图未变', 'ok');
+}
+
+async function resetOrigin() {
+  if (!mapData?.pose) { toast('未知当前位置，请先定位', 'err'); return; }
+  const {x, y} = mapData.pose;
+  if (!confirm(`将机器人当前位置 (${x.toFixed(2)}, ${y.toFixed(2)}) 设为地图原点？\n所有坐标（POI、禁区等）将同步偏移。`)) return;
+  const btn = document.getElementById('btnResetOrigin');
+  if (btn) btn.classList.add('btn-loading');
+  try {
+    const r = await post('/api/map/reset-origin', {});
+    if (r?.ok) { lastMapHash = ''; toast('地图原点已重置', 'ok'); }
+    else toast(r?.error || '重置失败', 'err');
+  } finally {
+    if (btn) btn.classList.remove('btn-loading');
+  }
+}
+
+async function doStop() {
+  await post('/api/stop');
+  navTarget = null; pathPts = [];
+  document.getElementById('rAction').textContent = '空闲';
+  redraw();
+  toast('已停止');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATE
+// ═══════════════════════════════════════════════════════════════
+async function navigateTo(x, y, yaw = null) {
+  navTarget = {x, y, yaw};
+  redraw();
+  const r = await post('/api/navigate', {x, y, yaw});
+  if (r && r.result_code && r.result_code !== 0) {
+    toast(`导航失败: ${r.result_description || r.result_code}`, 'err');
+    navTarget = null; redraw();
+  } else {
+    const label = yaw != null
+      ? `导航至 (${x.toFixed(2)}, ${y.toFixed(2)}) 朝向 ${(yaw*180/Math.PI).toFixed(0)}°`
+      : `导航至 (${x.toFixed(2)}, ${y.toFixed(2)})`;
+    toast(label, 'ok');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL UPDATES
+// ═══════════════════════════════════════════════════════════════
+function updateMapPanel(d) {
+  if (!d) return;
+  // quality
+  const q = typeof d.quality === 'number' ? d.quality : 0;
+  document.getElementById('rQuality').textContent = q;
+  const fill = document.getElementById('qfill');
+  fill.style.width      = q + '%';
+  fill.style.background = q>60 ? '#3ec89a' : q>30 ? '#e8b84b' : '#e05555';
+
+  // pose
+  if (d.pose) {
+    const deg = ((d.pose.yaw||0)*180/Math.PI).toFixed(1);
+    document.getElementById('rPose').textContent =
+      `x:  ${d.pose.x.toFixed(3)}\ny:  ${d.pose.y.toFixed(3)}\nyaw: ${deg}°`;
+  }
+
+  // map info
+  if (d.cols && d.rows) {
+    document.getElementById('rMapInfo').textContent =
+      `${d.cols}×${d.rows} 格\n${(d.cols*d.res).toFixed(1)}×${(d.rows*d.res).toFixed(1)} m\n${d.res.toFixed(3)} m/格`;
+  }
+
+}
+
+function updateStatusPanel(d) {
+  if (!d) return;
+  if (d.power) {
+    const pct     = d.power.batteryPercentage || 0;
+    const charging = d.power.isCharging;
+    const onDock   = d.power.dockingStatus === 'on_dock';
+    document.getElementById('battWrap').style.display = 'flex';
+    const pctEl  = document.getElementById('battPct');
+    const iconEl = document.getElementById('battIcon');
+    const dockEl = document.getElementById('dockTag');
+    pctEl.textContent = pct + '%';
+    pctEl.className   = 'batt-pct ' + (pct>30 ? 'batt-ok' : 'batt-low');
+    iconEl.textContent = pct>60 ? '🔋' : pct>20 ? '🪫' : '⚠️';
+    dockEl.style.display = onDock ? '' : 'none';
+    dockEl.textContent   = charging ? '⚡ 充电中' : '在桩上';
+  }
+
+  const act  = d.action;
+  const rAct = document.getElementById('rAction');
+  if (act && act.action_name) {
+    const name  = act.action_name.replace('agent.actions.','').replace('Action','');
+    const state = act.state || '';
+    rAct.innerHTML = `<span class="action-tag">${name}</span>\n${state}`;
+    if (state === 'finished' || state === 'error') { navTarget = null; pathPts = []; redraw(); }
+  } else {
+    rAct.textContent = '空闲';
+  }
+
+  if (d.floor) {
+    document.getElementById('rFloor').textContent = d.floor.floor || '—';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 充电桩
+// ═══════════════════════════════════════════════════════════════
+async function registerDock() {
+  const name = document.getElementById('dockNameInput')?.value.trim() || '充电桩';
+  const btn  = document.getElementById('btnRegDock');
+  if (btn) btn.classList.add('btn-loading');
+  try {
+    const r = await post('/api/docks/register', {name});
+    if (r && r.id) {
+      toast(`充电桩「${name}」注册成功`, 'ok');
+      fetchAnnotations();
+      switchTab('dock');
+    } else {
+      toast('注册失败，请确认底盘在充电桩上', 'err');
+    }
+  } finally {
+    if (btn) btn.classList.remove('btn-loading');
+  }
+}
+
+function renderDockList() {
+  const el = document.getElementById('dockList');
+  if (!docks.length) { el.innerHTML = '<div class="empty-hint">暂无充电桩</div>'; return; }
+  el.innerHTML = docks.map(d => {
+    const name = (d.metadata && d.metadata.display_name) || d.id.slice(0,8);
+    const px   = d.pose ? d.pose.x.toFixed(2) : '?';
+    const py   = d.pose ? d.pose.y.toFixed(2) : '?';
+    const yaw  = d.pose ? (d.pose.yaw*180/Math.PI).toFixed(1) : '?';
+    return `<div class="poi-item">
+      <div class="poi-name" title="${d.id}">⚡ ${esc(name)}</div>
+      <div class="poi-coords">x:${px} y:${py} yaw:${yaw}°</div>
+      <div class="poi-btns">
+        <button class="poi-btn nav" onclick="goHome()">回桩</button>
+        <button class="poi-btn del" onclick="delDock('${d.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function delDock(id) {
+  await fetch('/api/docks/' + id, {method:'DELETE'});
+  toast('充电桩已删除');
+  fetchAnnotations();
+}
+
+async function clearDocks() {
+  if (!confirm('清空全部充电桩记录？')) return;
+  await fetch('/api/docks/clear', {method:'DELETE'});
+  toast('充电桩已清空');
+  fetchAnnotations();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// POI
+// ═══════════════════════════════════════════════════════════════
+async function addPoiAtCurrent() {
+  if (!mapData || !mapData.pose) { toast('当前位置未知', 'err'); return; }
+  const name = document.getElementById('poiNameInput').value.trim() || String(nextPoiNum());
+  const description = document.getElementById('poiDescInput')?.value.trim() || '';
+  await post('/api/pois', {id: name, name, description});
+  toast(`已标记 POI「${name}」`, 'ok');
+  fetchAnnotations();
+}
+
+function nextPoiNum() {
+  let max = 0;
+  pois.forEach(p => {
+    const n = parseInt((p.metadata && p.metadata.display_name) || '', 10);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return max + 1;
+}
+
+function syncPoiNameInput() {
+  const el = document.getElementById('poiNameInput');
+  if (el) el.value = String(nextPoiNum());
+}
+
+async function fetchHealth() {
+  const el = document.getElementById('healthList');
+  el.innerHTML = '<div class="empty-hint">加载中…</div>';
+  try {
+    const d = await fetch('/api/health').then(r => r.json());
+    const errors = d.baseError || [];
+    if (!errors.length) {
+      el.innerHTML = '<div class="health-ok">✓ 无错误</div>';
+      return;
+    }
+    const levelMap = {0:'ok', 1:'warn', 2:'error', 4:'fatal', 255:'error'};
+    const levelText = {0:'正常', 1:'警告', 2:'错误', 4:'致命', 255:'未知'};
+    el.innerHTML = errors.map(e => `
+      <div class="err-item">
+        <span class="err-level ${levelMap[e.level] || 'error'}">${levelText[e.level] || e.level}</span>
+        <div class="err-code">错误码: 0x${(e.errorCode >>> 0).toString(16).toUpperCase()} (${e.errorCode})</div>
+        <div class="err-msg">${esc(e.message || '—')}</div>
+        <button class="poi-btn del" onclick="clearError(${e.errorCode})">清除</button>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-hint">获取失败</div>';
+  }
+}
+
+async function clearError(code) {
+  await fetch(`/api/health/${code}`, {method: 'DELETE'});
+  toast('错误已清除', 'ok');
+  fetchHealth();
+}
+
+function renderPoiList() {
+  const el = document.getElementById('poiList');
+  syncPoiNameInput();
+  if (!pois.length) { el.innerHTML = '<div class="empty-hint">暂无 POI</div>'; return; }
+  el.innerHTML = pois.map(p => {
+    const name = (p.metadata && p.metadata.display_name) || p.id.slice(0,8);
+    const px   = p.pose ? p.pose.x.toFixed(2) : '?';
+    const py   = p.pose ? p.pose.y.toFixed(2) : '?';
+    const yawDeg = (p.pose && p.pose.yaw != null) ? ` yaw:${(p.pose.yaw * 180 / Math.PI).toFixed(0)}°` : '';
+    return `<div class="poi-item">
+      <div class="poi-name" title="${p.id}">${esc(name)}</div>
+      <div class="poi-coords">x:${px} y:${py}${yawDeg}</div>
+      <div class="poi-coords" style="font-family:inherit;color:var(--txt2)">${esc((p.metadata && p.metadata.description) || '（无描述）')}</div>
+      <div class="poi-btns">
+        <button class="poi-btn nav" onclick="navToPoi('${p.id}')">导航</button>
+        <button class="poi-btn" onclick="editPoiDesc('${p.id}')">描述</button>
+        <button class="poi-btn del" onclick="delPoi('${p.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function navToPoi(id) {
+  if (!connected) { toast('未连接', 'warn'); return; }
+  await fetch('/api/pois/navigate/' + id, {method:'POST'});
+  const poi = pois.find(p => p.id===id);
+  if (poi && poi.pose) {
+    navTarget = {x: poi.pose.x, y: poi.pose.y, yaw: poi.pose.yaw ?? null};
+    redraw();
+  }
+  toast('导航至 POI', 'ok');
+}
+
+async function delPoi(id) {
+  await fetch('/api/pois/' + id, {method:'DELETE'});
+  toast('POI 已删除');
+  fetchAnnotations();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AREAS / WALLS
+// ═══════════════════════════════════════════════════════════════
+function renderAreaList() {
+  const ae = document.getElementById('areaList');
+  const we = document.getElementById('wallList');
+
+  if (!areas.length) {
+    ae.innerHTML = '<div class="empty-hint">暂无禁行区</div>';
+  } else {
+    ae.innerHTML = areas.map(a => {
+      const s = a.area?.start, e = a.area?.end;
+      const lbl = s ? `(${s.x.toFixed(1)},${s.y.toFixed(1)})→(${e.x.toFixed(1)},${e.y.toFixed(1)})` : `#${a.id}`;
+      return `<div class="area-item">
+        <span class="area-label">${lbl}</span>
+        <button class="area-del" onclick="delArea(${a.id})">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  if (!walls.length) {
+    we.innerHTML = '<div class="empty-hint">暂无虚拟墙</div>';
+  } else {
+    we.innerHTML = walls.map(w => {
+      const s = w.start, e = w.end;
+      const lbl = s ? `(${s.x.toFixed(1)},${s.y.toFixed(1)})→(${e.x.toFixed(1)},${e.y.toFixed(1)})` : `#${w.id}`;
+      return `<div class="area-item">
+        <span class="area-label">${lbl}</span>
+        <button class="area-del" onclick="delWall('${w.id}')">✕</button>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function delArea(id) {
+  await fetch(`/api/areas/${id}`, {method:'DELETE'});
+  toast('禁行区已删除'); fetchAnnotations();
+}
+async function clearAreas() {
+  if (!confirm('清空全部禁行区？')) return;
+  await fetch('/api/areas/clear', {method:'DELETE'});
+  toast('禁行区已清空'); fetchAnnotations();
+}
+async function delWall(id) {
+  await fetch(`/api/walls/${id}`, {method:'DELETE'});
+  toast('虚拟墙已删除'); fetchAnnotations();
+}
+async function clearWalls() {
+  if (!confirm('清空全部虚拟墙？')) return;
+  await fetch('/api/walls/clear', {method:'DELETE'});
+  toast('虚拟墙已清空'); fetchAnnotations();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.rtab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.rpane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('pane-'+name).classList.add('active');
+  if (name === 'sem') { semStatus(true); semHistory(); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 语义地图（/api/semantic/*，见 g1d_semantic.py）
+// ═══════════════════════════════════════════════════════════════
+async function editPoiDesc(id) {
+  const poi = pois.find(p => p.id === id);
+  if (!poi) return;
+  const old = (poi.metadata && poi.metadata.description) || '';
+  const desc = prompt('描述（语义地图用，写成人会怎么说，如：可以接水、喝水、泡茶）', old);
+  if (desc === null) return;
+  const r = await put('/api/pois/' + encodeURIComponent(id), {description: desc.trim()});
+  toast(r?.ok ? '描述已保存' : '保存失败', r?.ok ? 'ok' : 'err');
+  fetchAnnotations();
+}
+
+async function semJson(url, opts) {
+  const r = await fetch(url, opts);
+  let d = {};
+  try { d = await r.json(); } catch {}
+  if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d.result;
+}
+
+let semPollTimer = null;
+async function semStatus(preload) {
+  const el = document.getElementById('semStatus');
+  try {
+    const s = await semJson('/api/semantic/status' + (preload ? '?preload=1' : ''));
+    el.textContent = s.load_error ? ('模型加载失败：' + s.load_error)
+      : (s.model_loaded ? `模型已加载 · 阈值 ${s.threshold}` : '模型加载中…（第一次约需几十秒）');
+    clearTimeout(semPollTimer);
+    if (!s.model_loaded && !s.load_error) semPollTimer = setTimeout(() => semStatus(false), 3000);
+  } catch (e) {
+    el.textContent = e.message;
+  }
+}
+
+function semScores(list) {
+  return (list || []).map(c => `${esc(c.name)} ${Number(c.score).toFixed(3)}`).join('，');
+}
+
+async function semSearch(go) {
+  const text = document.getElementById('semQuery').value.trim();
+  if (!text) { toast('请输入一句话', 'warn'); return; }
+  if (go && !confirm('机器人会导航到最匹配的 POI，确定吗？')) return;
+  const box = document.getElementById('semResult');
+  box.innerHTML = '<div class="empty-hint">搜索中…</div>';
+  try {
+    const r = await semJson('/api/semantic/' + (go ? 'go' : 'search'), {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, source: 'g1d-console'}),
+    });
+    const head = r.found
+      ? `<div style="color:var(--green);font-weight:700">→ ${esc(r.best.name)}（${Number(r.best.score).toFixed(3)}）${r.navigating ? '，出发！' : ''}</div>`
+      : `<div style="color:var(--yellow)">没找到足够相关的 POI（阈值 ${r.threshold}），机器人不动</div>`;
+    box.innerHTML = `<div class="poi-item">${head}<div class="poi-coords">${semScores(r.candidates) || '没有 POI'}</div></div>`;
+    if (go && r.navigating && r.best) { navTarget = {x: r.best.x, y: r.best.y, yaw: r.best.yaw}; redraw(); }
+  } catch (e) {
+    box.innerHTML = `<div class="poi-item" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+  semHistory();
+}
+
+async function semRebuild() {
+  try {
+    const r = await semJson('/api/semantic/rebuild', {method: 'POST'});
+    toast(`语义库已重建：${r.count} 个 POI`, 'ok');
+  } catch (e) { toast('重建失败：' + e.message, 'err'); }
+}
+
+async function semHistory() {
+  const el = document.getElementById('semHistoryList');
+  try {
+    const list = (await semJson('/api/semantic/history')).slice().reverse();
+    if (!list.length) { el.innerHTML = '<div class="empty-hint">暂无记录</div>'; return; }
+    el.innerHTML = list.slice(0, 50).map(h => {
+      const res = !h.ok ? `<span style="color:var(--red)">失败：${esc(h.error || '')}</span>`
+        : h.found ? `<span style="color:var(--green)">→ ${esc(h.best)}${h.navigating ? '（已导航）' : ''}</span>`
+        : '<span style="color:var(--yellow)">没找到</span>';
+      const issues = (h.issues && h.issues.length) ? ` <span style="color:var(--yellow)">⚠ ${esc(h.issues.join('，'))}</span>` : '';
+      return `<div class="poi-item">
+        <div class="poi-coords">${esc((h.time || '').slice(11, 19))} · ${esc(h.source)} · ${h.elapsed_ms} ms</div>
+        <div class="poi-name">「${esc(h.raw_visible || '')}」${issues}</div>
+        <div class="poi-coords" style="font-family:inherit">${res} ${semScores(h.candidates)}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TELEOP
+// ═══════════════════════════════════════════════════════════════
+const DIR_BTN = {0:'tk-up', 1:'tk-down', 2:'tk-right', 3:'tk-left'};
+
+function ts(dir) {
+  if (!connected || teleopTimer) return;
+  doMove(dir);
+  teleopTimer = setInterval(() => doMove(dir), 500);
+  Object.values(DIR_BTN).forEach(id => document.getElementById(id)?.classList.remove('on'));
+  document.getElementById(DIR_BTN[dir])?.classList.add('on');
+}
+function te() {
+  if (teleopTimer) { clearInterval(teleopTimer); teleopTimer = null; }
+  Object.values(DIR_BTN).forEach(id => document.getElementById(id)?.classList.remove('on'));
+}
+async function doMove(dir) { await post('/api/move', {direction: dir}); }
+
+async function applySpeed() {
+  if (!connected) return;
+  const linear = parseFloat(document.getElementById('speedLinear').value);
+  await fetch('/api/speed', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({linear}),
+  });
+}
+
+const KEY_MAP = {
+  ArrowUp:'up', KeyW:'up', ArrowDown:'down', KeyS:'down',
+  ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right'
+};
+const DIR_MAP = {up:0, down:1, right:2, left:3};
+const BTN_MAP = {up:'tk-up', down:'tk-down', left:'tk-left', right:'tk-right'};
+let activeKey = null;
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = KEY_MAP[e.code];
+  if (k) {
+    if (activeKey === k) return;
+    e.preventDefault(); activeKey = k;
+    ts(DIR_MAP[k]);
+    return;
+  }
+  // 任意英文字母（非遥控键）→ 急停
+  if (e.key.length === 1 && /[a-zA-Z]/.test(e.key) && connected) {
+    e.preventDefault();
+    doStop();
+    toast('急停！', 'err');
+  }
+});
+document.addEventListener('keyup', e => {
+  const k = KEY_MAP[e.code];
+  if (!k) return;
+  activeKey = null; te();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════════
+new ResizeObserver(() => {
+  if (mapData && !fitDone) fitMap(); else redraw();
+}).observe(document.getElementById('canvasWrap'));
+
+// Initial draw
+redraw();
+</script>
+</body>
+</html>

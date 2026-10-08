@@ -1,0 +1,22 @@
+# G1D 开机自启：rosbridge + 语义地图 + g1_web / Vue / 底盘控制台 + G1 接口适配层（连 G1D）。
+# 安装：sudo bash ~/G1D/slam_ws/deploy/install_autostart.sh
+# 查看：systemctl status g1d；journalctl -u g1d -f；各服务日志 ~/g1d_logs/
+[Unit]
+Description=G1D stack (rosbridge, semantic map, web consoles, G1 interface bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aidlux
+Environment=G1D_ROBOT_IP=192.168.123.163
+ExecStart=/bin/bash /home/aidlux/G1D/slam_ws/deploy/run_g1d.sh robot
+Restart=always
+RestartSec=5
+# 停止时只给 run_g1d.sh 发 SIGINT，由它按顺序 SIGINT 各服务（ros2 launch 再关自己的子节点）；20 s 后还在的全部 SIGKILL
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

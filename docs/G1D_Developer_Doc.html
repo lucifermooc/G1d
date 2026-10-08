@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unitree G1D 开发文档</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; min-height: 100vh; }
+.sidebar { position: fixed; left: 0; top: 0; width: 220px; height: 100vh; background: #161b22; border-right: 1px solid #30363d; padding: 20px 0; overflow-y: auto; z-index: 100; }
+.sidebar h2 { color: #58a6ff; font-size: 14px; padding: 0 16px; margin-bottom: 16px; letter-spacing: 1px; }
+.sidebar button { display: block; width: 100%; padding: 12px 16px; background: none; border: none; color: #8b949e; text-align: left; font-size: 13px; cursor: pointer; transition: all 0.2s; border-left: 3px solid transparent; }
+.sidebar button:hover { background: #21262d; color: #c9d1d9; }
+.sidebar button.active { background: #1f2937; color: #58a6ff; border-left-color: #58a6ff; }
+.content { margin-left: 220px; padding: 40px; flex: 1; max-width: 1000px; }
+.section { display: none; }
+.section.active { display: block; }
+h1 { color: #f0f6fc; font-size: 28px; margin-bottom: 8px; border-bottom: 1px solid #30363d; padding-bottom: 16px; }
+h2 { color: #f0f6fc; font-size: 22px; margin: 32px 0 12px; }
+h3 { color: #e6edf3; font-size: 18px; margin: 24px 0 8px; }
+h4 { color: #c9d1d9; font-size: 15px; margin: 16px 0 8px; }
+p, li { line-height: 1.7; margin-bottom: 8px; }
+ul, ol { padding-left: 24px; margin-bottom: 16px; }
+code { background: #1f2937; padding: 2px 6px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 13px; color: #e6edf3; }
+pre { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; overflow-x: auto; margin: 12px 0; font-size: 13px; line-height: 1.5; }
+pre code { background: none; padding: 0; }
+.endpoint { margin: 12px 0; padding: 12px 16px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; min-width: 52px; text-align: center; color: #fff; }
+.badge-get { background: #238636; }
+.badge-post { background: #1f6feb; }
+.badge-put { background: #d29922; }
+.badge-delete { background: #da3633; }
+.endpoint-path { font-family: monospace; font-size: 13px; color: #e6edf3; }
+.endpoint-desc { width: 100%; color: #8b949e; font-size: 12px; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+th, td { border: 1px solid #30363d; padding: 8px 12px; text-align: left; }
+th { background: #161b22; color: #f0f6fc; }
+td { color: #c9d1d9; }
+tr:hover td { background: #1c2128; }
+.note { background: #1c2128; border-left: 4px solid #58a6ff; padding: 12px 16px; margin: 12px 0; border-radius: 0 6px 6px 0; font-size: 13px; }
+.warn { border-left-color: #d29922; }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+<h2>G1D 文档</h2>
+<button class="active" onclick="showSection(0)">底盘API接口</button>
+<button onclick="showSection(1)">SLAM导航服务</button>
+<button onclick="showSection(2)">底盘与立柱控制</button>
+<button onclick="showSection(3)">图像服务接口</button>
+<button onclick="showSection(4)">关节控制</button>
+<button onclick="showSection(5)">音频灯光服务</button>
+</nav>
+<main class="content">
+
+<!-- Section 0: 底盘API接口 -->
+<div class="section active">
+<h1>底盘API接口 (API v1.1.0)</h1>
+<p>Base URL: <code>http://&lt;robot_ip&gt;:1448</code></p>
+
+<h2>system 系统资源</h2>
+
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/capabilities</span><span class="endpoint-desc">获取底盘能力</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/power/status</span><span class="endpoint-desc">获取底盘电源状态 (batteryPercentage, dockingStatus, isCharging, isDCConnected, powerStage, sleepMode)</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/power/:shutdown</span><span class="endpoint-desc">关闭或重启底盘 (shutdown_time_interval, restart_time_interval)</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/power/:hibernate</span><span class="endpoint-desc">休眠底盘（激光雷达暂停）</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/power/:wakeup</span><span class="endpoint-desc">唤醒底盘</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/power/:restartmodule</span><span class="endpoint-desc">重启模块 (RestartModeSoft / RestartModeHard / RestartModeBase)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/robot/info</span><span class="endpoint-desc">获取设备信息</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/robot/health</span><span class="endpoint-desc">获取设备健康状态</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/system/v1/robot/health/{error_code}</span><span class="endpoint-desc">清除错误状态</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/laserscan</span><span class="endpoint-desc">获取当前激光观测帧 (固件≥4.2.2)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/parameter</span><span class="endpoint-desc">获取系统参数 (base.max_moving_speed, base.max_angular_speed, docking.docked_register_strategy)</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/parameter</span><span class="endpoint-desc">设置系统参数 (base.max_moving_speed, base.max_angular_speed, base.emergency_stop, base.brake_release)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/network/status</span><span class="endpoint-desc">获取网络状态</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/network/status</span><span class="endpoint-desc">设置网络状态 (0=AP, 1=Station, 2=禁用WIFI, 3=禁用DHCP, 4=启用DHCP)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/network/route</span><span class="endpoint-desc">获取路由信息</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/network/route</span><span class="endpoint-desc">设置路由信息</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/network/ip</span><span class="endpoint-desc">设置静态IP（重启后生效）</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/system/v1/network/ip</span><span class="endpoint-desc">删除静态IP配置</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/network/apn</span><span class="endpoint-desc">获取cmlink apn (固件≥4.4.0)</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/network/apn</span><span class="endpoint-desc">设置cmlink apn</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/system/v1/cube/config</span><span class="endpoint-desc">设置Cube配置 (固件≥4.2.0)</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/light/control</span><span class="endpoint-desc">设置灯光控制效果 (channel, controlPart, mode, color RGB, brightMs, offMs)</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/aeb/control</span><span class="endpoint-desc">设置AEB控制 (On/Off)</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/system/v1/jack/status</span><span class="endpoint-desc">设置千斤顶状态 (Up/Down/Stop/ClearAlarm)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/jack/status</span><span class="endpoint-desc">获取千斤顶状态</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/rawadcimu</span><span class="endpoint-desc">获取IMU的ADC原始值</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/battery/pack</span><span class="endpoint-desc">获取电池包电流和温度</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/system/v1/rawimu</span><span class="endpoint-desc">获取IMU原始值</span></div>
+
+<h2>slam 定位建图</h2>
+
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/localization/pose</span><span class="endpoint-desc">获取底盘位姿 (x, y, z, yaw, pitch, roll)</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/localization/pose</span><span class="endpoint-desc">设置底盘位姿</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/localization/odopose</span><span class="endpoint-desc">获取里程计位姿</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/localization/quality</span><span class="endpoint-desc">获取定位质量 (0-100)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/localization/:enable</span><span class="endpoint-desc">是否支持定位</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/localization/:enable</span><span class="endpoint-desc">开启/暂停定位</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/slam/v1/localization/status/:reset</span><span class="endpoint-desc">重置定位状态</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/mapping/:enable</span><span class="endpoint-desc">是否开启建图</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/mapping/:enable</span><span class="endpoint-desc">开启/暂停建图</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/loopclosure/:enable</span><span class="endpoint-desc">是否开启闭环检测 (固件≥4.6.0)</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/loopclosure/:enable</span><span class="endpoint-desc">开启/暂停闭环检测</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/homepose</span><span class="endpoint-desc">获取充电桩位置</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/homepose</span><span class="endpoint-desc">设置充电桩位置</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/homedocks</span><span class="endpoint-desc">获取所有充电桩信息 (固件≥4.3.2)</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/homedocks</span><span class="endpoint-desc">设置所有充电桩</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/slam/v1/homedocks</span><span class="endpoint-desc">添加充电桩</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/slam/v1/homedocks</span><span class="endpoint-desc">清空充电桩</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/slam/v1/homedocks/:register</span><span class="endpoint-desc">注册充电桩</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/homedocks/{dock_id}</span><span class="endpoint-desc">编辑充电桩</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/slam/v1/homedocks/{dock_id}</span><span class="endpoint-desc">移除充电桩</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/imu</span><span class="endpoint-desc">获取IMU数据</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/knownarea</span><span class="endpoint-desc">获取已知区域</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/maps/explore</span><span class="endpoint-desc">获取栅格地图(二进制)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/slam/v1/maps/stcm</span><span class="endpoint-desc">获取复合地图</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/maps/stcm</span><span class="endpoint-desc">设置复合地图</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/slam/v1/maps</span><span class="endpoint-desc">清空地图</span></div>
+<div class="endpoint"><span class="badge badge-put">PUT</span><span class="endpoint-path">/api/core/slam/v1/maps/origin</span><span class="endpoint-desc">移动地图原点</span></div>
+
+<h2>artifact 地图语义元素</h2>
+
+<h3>虚拟线段</h3>
+<div class="endpoint"><span class="badge badge-get">GET</span> <span class="badge badge-post">POST</span> <span class="badge badge-put">PUT</span> <span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/artifact/v1/lines/{usage}</span><span class="endpoint-desc">虚拟线段管理 (usage: tracks / walls)</span></div>
+
+<h3>矩形区域</h3>
+<div class="endpoint"><span class="badge badge-get">GET</span> <span class="badge badge-post">POST</span> <span class="badge badge-put">PUT</span> <span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/artifact/v1/rectangle-areas/{usage}</span><span class="endpoint-desc">矩形区域管理</span></div>
+<p>支持的 usage 类型:</p>
+<ul>
+<li><code>forbidden_area</code> - 禁止区域</li>
+<li><code>elevator_area</code> - 电梯区域</li>
+<li><code>dangerous_area</code> - 危险区域</li>
+<li><code>coverage_area</code> - 覆盖区域</li>
+<li><code>maintenance_area</code> - 维护区域</li>
+<li><code>sensor_disable_area</code> - 传感器禁用区域</li>
+<li><code>restricted_area</code> - 限制区域</li>
+</ul>
+
+<h3>POI管理</h3>
+<div class="endpoint"><span class="badge badge-get">GET</span> <span class="badge badge-post">POST</span> <span class="badge badge-put">PUT</span> <span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/artifact/v1/pois</span><span class="endpoint-desc">POI兴趣点管理</span></div>
+
+<h3>激光地标</h3>
+<div class="endpoint"><span class="badge badge-get">GET</span> <span class="badge badge-post">POST</span> <span class="badge badge-put">PUT</span> <span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/artifact/v1/laser-landmarks</span><span class="endpoint-desc">激光地标管理 (固件≥5.1.1)</span></div>
+
+<h2>motion 底盘运动控制</h2>
+
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/action-factories</span><span class="endpoint-desc">获取所有支持的Action</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/actions/:current</span><span class="endpoint-desc">获取当前行为</span></div>
+<div class="endpoint"><span class="badge badge-delete">DELETE</span><span class="endpoint-path">/api/core/motion/v1/actions/:current</span><span class="endpoint-desc">终止当前行为</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/motion/v1/actions</span><span class="endpoint-desc">创建新运动行为</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/actions/{action_id}</span><span class="endpoint-desc">查询Action状态</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/path</span><span class="endpoint-desc">获取剩余路径点</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/milestones</span><span class="endpoint-desc">获取剩余目标点</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/speed</span><span class="endpoint-desc">获取运动速度 (vx, vy, omega)</span></div>
+<div class="endpoint"><span class="badge badge-get">GET</span><span class="endpoint-path">/api/core/motion/v1/time</span><span class="endpoint-desc">获取剩余时间</span></div>
+<div class="endpoint"><span class="badge badge-post">POST</span><span class="endpoint-path">/api/core/motion/v1/:search_path</span><span class="endpoint-desc">搜索路径</span></div>
+
+<p>Action状态码:</p>
+<table>
+<tr><th>status</th><th>说明</th></tr>
+<tr><td>0</td><td>初始化</td></tr>
+<tr><td>1</td><td>执行中</td></tr>
+<tr><td>4</td><td>已完成</td></tr>
+</table>
+<table>
+<tr><th>result</th><th>说明</th></tr>
+<tr><td>0</td><td>成功</td></tr>
+<tr><td>-1</td><td>失败</td></tr>
+<tr><td>-2</td><td>被中断</td></tr>
+</table>
+
+<h3>Actions 列表</h3>
+
+<h4>MoveToAction</h4>
+<pre><code>{
+  "action_name": "MoveToAction",
+  "target": { "x": 1.0, "y": 2.0, "z": 0.0 },
+  "move_options": {
+    "mode": 0,
+    "flags": ["precise", "with_yaw"],
+    "yaw": 1.57,
+    "acceptable_precision": 0.1,
+    "speed_ratio": 0.8
+  }
+}</code></pre>
+<p>mode: 0=自由导航, 1=沿轨道, 2=沿轨道严格模式</p>
+<p>flags: <code>precise</code>, <code>with_yaw</code>, <code>fail_retry_count</code>, <code>find_path_ignoring_dynamic_obstacles</code>, <code>with_directed_virtual_track</code></p>
+
+<h4>SeriesMoveToAction</h4>
+<pre><code>{
+  "action_name": "SeriesMoveToAction",
+  "targets": [
+    { "x": 1.0, "y": 2.0, "z": 0.0 },
+    { "x": 3.0, "y": 4.0, "z": 0.0 }
+  ],
+  "move_options": { "mode": 0 }
+}</code></pre>
+
+<h4>MoveByAction</h4>
+<pre><code>{
+  "action_name": "MoveByAction",
+  "direction": 0,
+  "duration": 500
+}</code></pre>
+<p>direction: 0=前进, 1=后退, 2=右转, 3=左转; duration单位ms, 最大500ms</p>
+
+<h4>GoHomeAction</h4>
+<pre><code>{
+  "action_name": "GoHomeAction",
+  "gohome_options": {
+    "flags": "dock",
+    "back_to_landing": false,
+    "charging_retry_count": 3,
+    "move_options": { "mode": 0 }
+  }
+}</code></pre>
+<p>flags: "dock" 或 "no_dock"</p>
+
+<h4>RotateToAction</h4>
+<pre><code>{
+  "action_name": "RotateToAction",
+  "angle": 1.57
+}</code></pre>
+<p>angle: 弧度，绝对角度</p>
+
+<h4>RotateAction</h4>
+<pre><code>{
+  "action_name": "RotateAction",
+  "angle": 0.785
+}</code></pre>
+<p>angle: 弧度，相对旋转，正数逆时针</p>
+
+<h4>MoveToTagAction</h4>
+<pre><code>{
+  "action_name": "MoveToTagAction",
+  "target": { "x": 1.0, "y": 0.0, "z": 0.0 },
+  "tag_type": 0,
+  "target_relative_pose": { "x": 0.5, "y": 0.0, "yaw": 0.0 },
+  "backward_docking": true
+}</code></pre>
+<p>tag_type: 0=二维码, 1=激光标签, 2=反光板, 3=货架</p>
+
+<h4>BackOffFromTagAction</h4>
+<pre><code>{
+  "action_name": "BackOffFromTagAction",
+  "backup_mode": 0,
+  "tag_type": 0,
+  "backup_distance": 1.0
+}</code></pre>
+<p>backup_mode: 0=自由后退, 1=窄道后退</p>
+
+<h4>RecoverLocalizationAction</h4>
+<pre><code>{
+  "action_name": "RecoverLocalizationAction",
+  "area": { "x": 0, "y": 0, "width": 10, "height": 10 },
+  "relocalization_options": {
+    "max_recover_time": 30,
+    "recover_movement_type": "RotateOnly"
+  }
+}</code></pre>
+<p>recover_movement_type: "RotateOnly" 或 "NoMove"</p>
+
+<h4>ReturnToParkingAction (固件≥4.5.5)</h4>
+<pre><code>{
+  "action_name": "ReturnToParkingAction",
+  "target": { "poi_name": "parking_01" },
+  "move_options": { "mode": 0 }
+}</code></pre>
+
+<h4>FollowPathPointsAction (固件≥5.1.1)</h4>
+<pre><code>{
+  "action_name": "FollowPathPointsAction",
+  "path_points": [
+    { "x": 1.0, "y": 1.0 },
+    { "x": 2.0, "y": 2.0 }
+  ],
+  "move_options": { "mode": 0 }
+}</code></pre>
+
+<h4>EnterElevatorAction / LeaveElevatorAction (固件≥5.1.1)</h4>
+<pre><code>{
+  "action_name": "EnterElevatorAction",
+  "elevator_id": "elevator_01",
+  "enter_elevator_options": {}
+}
+
+{
+  "action_name": "LeaveElevatorAction",
+  "elevator_id": "elevator_01",
+  "target": { "x": 5.0, "y": 3.0, "z": 0.0 },
+  "leave_elevator_options": {}
+}</code></pre>
+
+<h4>MultiFloorMoveAction / MultiFloorBackHomeAction</h4>
+<p>用于多楼层导航场景，需配合电梯区域配置使用。</p>
+
+</div>
+
+<!-- Section 1: SLAM导航服务 -->
+<div class="section">
+<h1>SLAM导航服务</h1>
+
+<h2>连接方式</h2>
+<table>
+<tr><th>连接方式</th><th>IP地址</th><th>端口</th></tr>
+<tr><td>有线连接</td><td>192.168.123.163</td><td>1448</td></tr>
+<tr><td>无线连接</td><td>192.168.12.1</td><td>1448</td></tr>
+</table>
+
+<h3>验证连接</h3>
+<pre><code>curl --noproxy '*' http://&lt;robot_ip&gt;:1448/api/core/system/v1/robot/info</code></pre>
+
+<h2>RoboStudio工具</h2>
+<ul>
+<li>连接: 输入机器人IP和端口1448</li>
+<li>界面: 地图视图、状态面板、操作工具栏</li>
+<li>插件管理: 可安装/卸载功能插件</li>
+</ul>
+
+<h2>建图流程</h2>
+<div class="note warn">建图时行驶速度不宜超过 0.4m/s</div>
+<ol>
+<li>启动建图模式 (PUT /api/core/slam/v1/mapping/:enable)</li>
+<li>遥控机器人遍历环境</li>
+<li>同步地图数据</li>
+<li>保存为 .stcm 格式复合地图</li>
+</ol>
+
+<h2>地图编辑器</h2>
+<ul>
+<li>充电桩配置 - 设置充电桩位置和朝向</li>
+<li>橡皮擦 - 擦除地图噪点</li>
+<li>裁剪 - 裁剪地图边界</li>
+</ul>
+
+<h2>POI星标配置</h2>
+<p>POI类型:</p>
+<ul>
+<li>普通POI - 通用导航目标点</li>
+<li>PARKING - 停靠点</li>
+<li>充电桩 - 充电位置</li>
+</ul>
+
+<h2>虚拟墙设置</h2>
+<p>通过 <code>/api/core/artifact/v1/lines/walls</code> 接口设置虚拟墙，机器人不会穿越虚拟墙进行导航。</p>
+
+<h2>虚拟轨道设置</h2>
+<p>通过 <code>/api/core/artifact/v1/lines/tracks</code> 接口设置虚拟轨道。配合 move_options 中的 mode 参数使用:</p>
+<table>
+<tr><th>mode</th><th>说明</th></tr>
+<tr><td>0</td><td>自由导航（不使用轨道）</td></tr>
+<tr><td>1</td><td>沿轨道导航</td></tr>
+<tr><td>2</td><td>严格沿轨道导航</td></tr>
+</table>
+
+<h2>重定位</h2>
+<p>当机器人定位丢失时，可通过API触发重定位:</p>
+<pre><code>POST /api/core/motion/v1/actions
+{
+  "action_name": "RecoverLocalizationAction",
+  "area": { "x": 0, "y": 0, "width": 20, "height": 20 },
+  "relocalization_options": {
+    "max_recover_time": 30,
+    "recover_movement_type": "RotateOnly"
+  }
+}</code></pre>
+
+<h2>多楼层地图</h2>
+<p>支持多楼层地图管理，每层独立建图后通过电梯区域关联。使用 MultiFloorMoveAction 实现跨楼层导航。</p>
+
+<h2>API调用格式</h2>
+<pre><code>POST http://&lt;robot_ip&gt;:1448/api/core/motion/v1/actions
+Content-Type: application/json
+
+{
+  "action_name": "MoveToAction",
+  "target": { "x": 1.0, "y": 2.0, "z": 0.0 },
+  "move_options": { "mode": 0 }
+}</code></pre>
+
+<p>返回 action_id 后可查询状态:</p>
+<pre><code>GET /api/core/motion/v1/actions/{action_id}
+
+Response:
+{
+  "action_id": "xxx",
+  "status": 1,
+  "result": 0
+}</code></pre>
+
+<table>
+<tr><th>status</th><th>说明</th></tr>
+<tr><td>0</td><td>初始化</td></tr>
+<tr><td>1</td><td>执行中</td></tr>
+<tr><td>4</td><td>已完成</td></tr>
+</table>
+<table>
+<tr><th>result</th><th>说明</th></tr>
+<tr><td>0</td><td>成功</td></tr>
+<tr><td>-1</td><td>失败</td></tr>
+<tr><td>-2</td><td>被中断</td></tr>
+</table>
+
+<h2>坐标系说明</h2>
+<ul>
+<li>原点: 建图起始点</li>
+<li>X正方向: 机器人初始前进方向</li>
+<li>Y正方向: X正方向逆时针旋转90度</li>
+<li>Yaw: 逆时针为正（弧度）</li>
+</ul>
+
+<h2>Python Demo</h2>
+<pre><code>import requests
+import time
+
+ROBOT_IP = "192.168.123.163"
+BASE_URL = f"http://{ROBOT_IP}:1448"
+
+def run_action(action_body, timeout=60):
+    """执行Action并等待完成"""
+    url = f"{BASE_URL}/api/core/motion/v1/actions"
+    resp = requests.post(url, json=action_body)
+    resp.raise_for_status()
+    action_id = resp.json().get("action_id")
+    print(f"Action started: {action_id}")
+
+    start = time.time()
+    while time.time() - start &lt; timeout:
+        status_resp = requests.get(f"{url}/{action_id}")
+        data = status_resp.json()
+        status = data.get("status")
+        result = data.get("result")
+
+        if status == 4:  # 已完成
+            if result == 0:
+                print("Action succeeded!")
+            elif result == -1:
+                print("Action failed!")
+            elif result == -2:
+                print("Action interrupted!")
+            return data
+        time.sleep(0.5)
+
+    print("Action timeout!")
+    return None
+
+# 示例: 移动到目标点
+action = {
+    "action_name": "MoveToAction",
+    "target": {"x": 1.0, "y": 2.0, "z": 0.0},
+    "move_options": {"mode": 0, "flags": ["with_yaw"], "yaw": 1.57}
+}
+run_action(action)
+
+# 示例: 回充电桩
+action = {
+    "action_name": "GoHomeAction",
+    "gohome_options": {"flags": "dock"}
+}
+run_action(action)</code></pre>
+
+<h2>指示灯说明</h2>
+<table>
+<tr><th>状态</th><th>灯光效果</th></tr>
+<tr><td>正常运行</td><td>绿色常亮</td></tr>
+<tr><td>充电中</td><td>绿色呼吸</td></tr>
+<tr><td>低电量</td><td>红色闪烁</td></tr>
+<tr><td>错误状态</td><td>红色常亮</td></tr>
+<tr><td>建图中</td><td>蓝色闪烁</td></tr>
+</table>
+
+<h2>安全事项</h2>
+<ul>
+<li>建图速度不超过 0.4m/s</li>
+<li>确保激光雷达视野无遮挡</li>
+<li>设置合理的虚拟墙和禁区</li>
+<li>定期检查定位质量 (quality &gt; 50)</li>
+<li>低电量时及时回充</li>
+</ul>
+</div>
+
+<!-- Section 2: 底盘与立柱控制 -->
+<div class="section">
+<h1>底盘与立柱控制</h1>
+
+<div class="note">此功能仅限旗舰版机型使用</div>
+
+<h2>接口说明</h2>
+
+<h3>Move(float vx, float vy, float vyaw)</h3>
+<p>控制底盘运动（仅旗舰版）</p>
+<table>
+<tr><th>参数</th><th>类型</th><th>说明</th></tr>
+<tr><td>vx</td><td>float</td><td>前进速度 (m/s)</td></tr>
+<tr><td>vy</td><td>float</td><td>横向速度 (m/s)</td></tr>
+<tr><td>vyaw</td><td>float</td><td>旋转角速度 (rad/s)</td></tr>
+</table>
+
+<h3>HeightAdjust(float vz)</h3>
+<p>控制立柱升降</p>
+<table>
+<tr><th>参数</th><th>类型</th><th>说明</th></tr>
+<tr><td>vz</td><td>float</td><td>升降速度</td></tr>
+</table>
+
+<h2>C++ 例程</h2>
+<pre><code>#include &lt;unitree/robot/g1/agv_client.hpp&gt;
+
+using namespace unitree::robot::g1;
+
+int main() {
+    AgvClient client;
+    client.Init();
+
+    // 控制底盘前进
+    client.Move(0.5, 0.0, 0.0);  // vx=0.5m/s, vy=0, vyaw=0
+
+    // 控制立柱上升
+    client.HeightAdjust(0.1);     // vz=0.1
+
+    // 停止运动
+    client.Move(0.0, 0.0, 0.0);
+
+    return 0;
+}</code></pre>
+</div>
+
+<!-- Section 3: 图像服务接口 -->
+<div class="section">
+<h1>图像服务接口</h1>
+
+<h2>Teleimager 推流</h2>
+<p>支持头部双目摄像头和腕部单目摄像头的图像推流。</p>
+
+<h2>环境配置</h2>
+<p>PC2 conda环境名: <code>tv</code></p>
+<pre><code>conda activate tv</code></pre>
+
+<h2>ZMQ方式</h2>
+<ol>
+<li>PC设置静态IP: <code>192.168.123.22</code></li>
+<li>运行图像客户端:</li>
+</ol>
+<pre><code>python image_client.py</code></pre>
+
+<h2>WebRTC方式</h2>
+<p>通过浏览器直接访问以下地址查看实时画面:</p>
+<table>
+<tr><th>摄像头</th><th>地址</th></tr>
+<tr><td>头部双目</td><td><code>https://192.168.123.164:60001</code></td></tr>
+<tr><td>左手腕部</td><td><code>https://192.168.123.164:60002</code></td></tr>
+<tr><td>右手腕部</td><td><code>https://192.168.123.164:60003</code></td></tr>
+</table>
+<div class="note">WebRTC方式需要使用HTTPS协议，浏览器可能提示证书不安全，选择继续访问即可。</div>
+</div>
+
+<!-- Section 4: 关节控制 -->
+<div class="section">
+<h1>关节控制</h1>
+
+<h2>DDS Topics</h2>
+<table>
+<tr><th>Topic</th><th>说明</th></tr>
+<tr><td><code>rt/lowcmd</code></td><td>关节控制指令（下发）</td></tr>
+<tr><td><code>rt/lowstate</code></td><td>关节状态反馈（接收）</td></tr>
+<tr><td><code>rt/secondary_imu</code></td><td>副IMU数据</td></tr>
+</table>
+
+<h2>关节索引表</h2>
+<p><code>G1D_NUM_MOTOR = 29</code></p>
+
+<h3>mode_pr=0 时关节定义</h3>
+<table>
+<tr><th>Index</th><th>关节名</th><th>说明</th></tr>
+<tr><td>0-11</td><td>-</td><td>留空/腿部无效</td></tr>
+<tr><td>12</td><td>WaistYaw</td><td>腰部偏航</td></tr>
+<tr><td>13</td><td>WAIST_ROLL</td><td>腰部横滚</td></tr>
+<tr><td>14</td><td>WAIST_PITCH</td><td>腰部俯仰</td></tr>
+<tr><td>15</td><td>L_SHOULDER_PITCH</td><td>左肩俯仰</td></tr>
+<tr><td>16</td><td>L_SHOULDER_ROLL</td><td>左肩横滚</td></tr>
+<tr><td>17</td><td>L_SHOULDER_YAW</td><td>左肩偏航</td></tr>
+<tr><td>18</td><td>L_ELBOW_PITCH</td><td>左肘俯仰</td></tr>
+<tr><td>19</td><td>L_ELBOW_YAW</td><td>左肘偏航</td></tr>
+<tr><td>20</td><td>L_WRIST_PITCH</td><td>左腕俯仰</td></tr>
+<tr><td>21</td><td>L_WRIST_YAW</td><td>左腕偏航</td></tr>
+<tr><td>22</td><td>R_SHOULDER_PITCH</td><td>右肩俯仰</td></tr>
+<tr><td>23</td><td>R_SHOULDER_ROLL</td><td>右肩横滚</td></tr>
+<tr><td>24</td><td>R_SHOULDER_YAW</td><td>右肩偏航</td></tr>
+<tr><td>25</td><td>R_ELBOW_PITCH</td><td>右肘俯仰</td></tr>
+<tr><td>26</td><td>R_ELBOW_YAW</td><td>右肘偏航</td></tr>
+<tr><td>27</td><td>R_WRIST_PITCH</td><td>右腕俯仰</td></tr>
+<tr><td>28</td><td>R_WRIST_YAW</td><td>右腕偏航</td></tr>
+</table>
+
+<h3>mode_pr=1 时关节定义</h3>
+<table>
+<tr><th>Index</th><th>关节名</th><th>说明</th></tr>
+<tr><td>0-11</td><td>-</td><td>留空/腿部无效</td></tr>
+<tr><td>12</td><td>-</td><td>空</td></tr>
+<tr><td>13</td><td>WAIST_A</td><td>腰部A轴</td></tr>
+<tr><td>14</td><td>WAIST_B</td><td>腰部B轴</td></tr>
+<tr><td>15-21</td><td>左臂</td><td>同mode_pr=0</td></tr>
+<tr><td>22-28</td><td>右臂</td><td>同mode_pr=0</td></tr>
+</table>
+
+<h2>控制参数</h2>
+
+<h3>Kp 数组 (位置增益)</h3>
+<pre><code>Kp[29] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // index 0-11: 无效
+           60,   // index 12: WaistYaw
+           0,    // index 13
+           40,   // index 14
+           40, 40, 40, 40, 40, 40, 40,  // index 15-21: 左臂
+           40, 40, 40, 40, 40, 40, 40}; // index 22-28: 右臂</code></pre>
+
+<h3>Kd 数组 (阻尼增益)</h3>
+<pre><code>Kd[29] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // index 0-11: 无效
+           1,    // index 12: WaistYaw
+           0,    // index 13
+           1,    // index 14
+           1, 1, 1, 1, 1, 1, 1,  // index 15-21: 左臂
+           1, 1, 1, 1, 1, 1, 1}; // index 22-28: 右臂</code></pre>
+
+<h2>电机指令结构</h2>
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td>mode</td><td>1 = Enable (使能)</td></tr>
+<tr><td>tau</td><td>前馈力矩</td></tr>
+<tr><td>q</td><td>目标位置 (rad)</td></tr>
+<tr><td>dq</td><td>目标速度 (rad/s)</td></tr>
+<tr><td>kp</td><td>位置增益</td></tr>
+<tr><td>kd</td><td>阻尼增益</td></tr>
+</table>
+<p>实际输出力矩: <code>tau_out = tau + kp * (q - q_current) + kd * (dq - dq_current)</code></p>
+
+<h2>CRC32 校验</h2>
+<p>每条 LowCmd 消息需要附带 CRC32 校验值，确保数据完整性。</p>
+
+<h2>控制频率</h2>
+<div class="note warn">控制周期: 5ms (200Hz)，必须严格保证发送频率</div>
+
+<h2>完整C++例程</h2>
+<pre><code>#include &lt;unitree/robot/channel/channel_publisher.hpp&gt;
+#include &lt;unitree/robot/channel/channel_subscriber.hpp&gt;
+#include &lt;unitree/idl/g1/LowCmd_.hpp&gt;
+#include &lt;unitree/idl/g1/LowState_.hpp&gt;
+#include &lt;unitree/idl/g1/IMUState_.hpp&gt;
+#include &lt;cmath&gt;
+#include &lt;thread&gt;
+#include &lt;chrono&gt;
+#include &lt;mutex&gt;
+
+constexpr int G1D_NUM_MOTOR = 29;
+
+enum G1DJointIndex {
+    WaistYaw = 12,
+    WAIST_ROLL = 13,
+    WAIST_PITCH = 14,
+    L_SHOULDER_PITCH = 15,
+    L_SHOULDER_ROLL = 16,
+    L_SHOULDER_YAW = 17,
+    L_ELBOW_PITCH = 18,
+    L_ELBOW_YAW = 19,
+    L_WRIST_PITCH = 20,
+    L_WRIST_YAW = 21,
+    R_SHOULDER_PITCH = 22,
+    R_SHOULDER_ROLL = 23,
+    R_SHOULDER_YAW = 24,
+    R_ELBOW_PITCH = 25,
+    R_ELBOW_YAW = 26,
+    R_WRIST_PITCH = 27,
+    R_WRIST_YAW = 28,
+};
+
+// 数据缓冲区
+template&lt;typename T&gt;
+class DataBuffer {
+public:
+    void SetData(const T&amp; data) {
+        std::lock_guard&lt;std::mutex&gt; lock(mtx_);
+        data_ = data;
+        has_data_ = true;
+    }
+    bool GetData(T&amp; data) {
+        std::lock_guard&lt;std::mutex&gt; lock(mtx_);
+        if (!has_data_) return false;
+        data = data_;
+        return true;
+    }
+private:
+    T data_;
+    std::mutex mtx_;
+    bool has_data_ = false;
+};
+
+DataBuffer&lt;unitree_g1::msg::LowState_&gt; low_state_buffer;
+DataBuffer&lt;unitree_g1::msg::IMUState_&gt; imu_buffer;
+
+// IMU回调
+void ImuCallback(const void* msg) {
+    auto* imu_msg = static_cast&lt;const unitree_g1::msg::IMUState_*&gt;(msg);
+    imu_buffer.SetData(*imu_msg);
+}
+
+// LowState回调
+void LowStateCallback(const void* msg) {
+    auto* state_msg = static_cast&lt;const unitree_g1::msg::LowState_*&gt;(msg);
+    low_state_buffer.SetData(*state_msg);
+}
+
+uint32_t ComputeCRC32(const unitree_g1::msg::LowCmd_&amp; cmd) {
+    // CRC32计算实现
+    // ...
+    return 0;
+}
+
+int main() {
+    // 初始化DDS
+    unitree::robot::ChannelFactory::Instance()-&gt;Init(0);
+
+    // 创建发布者和订阅者
+    auto cmd_pub = unitree::robot::ChannelPublisher&lt;unitree_g1::msg::LowCmd_&gt;("rt/lowcmd");
+    auto state_sub = unitree::robot::ChannelSubscriber&lt;unitree_g1::msg::LowState_&gt;("rt/lowstate");
+    auto imu_sub = unitree::robot::ChannelSubscriber&lt;unitree_g1::msg::IMUState_&gt;("rt/secondary_imu");
+
+    cmd_pub.InitChannel();
+    state_sub.InitChannel(LowStateCallback);
+    imu_sub.InitChannel(ImuCallback);
+
+    // Kp/Kd
+    float kp[G1D_NUM_MOTOR] = {0,0,0,0,0,0,0,0,0,0,0,0,
+                                 60, 0, 40,
+                                 40,40,40,40,40,40,40,
+                                 40,40,40,40,40,40,40};
+    float kd[G1D_NUM_MOTOR] = {0,0,0,0,0,0,0,0,0,0,0,0,
+                                 1, 0, 1,
+                                 1,1,1,1,1,1,1,
+                                 1,1,1,1,1,1,1};
+
+    // 手臂摆动Demo
+    float t = 0.0f;
+    float dt = 0.005f;  // 5ms
+    float amplitude = 0.5f;
+
+    while (true) {
+        unitree_g1::msg::LowCmd_ cmd{};
+
+        // 使能所有有效关节
+        for (int i = 12; i &lt; G1D_NUM_MOTOR; i++) {
+            cmd.motor_cmd[i].mode = 1;
+            cmd.motor_cmd[i].kp = kp[i];
+            cmd.motor_cmd[i].kd = kd[i];
+            cmd.motor_cmd[i].tau = 0.0f;
+            cmd.motor_cmd[i].dq = 0.0f;
+        }
+
+        // 左臂摆动
+        float target_q = amplitude * std::sin(2.0f * M_PI * 0.5f * t);
+        cmd.motor_cmd[L_SHOULDER_PITCH].q = target_q;
+        cmd.motor_cmd[R_SHOULDER_PITCH].q = -target_q;
+
+        // CRC32校验
+        cmd.crc = ComputeCRC32(cmd);
+
+        cmd_pub.Write(cmd);
+
+        t += dt;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    return 0;
+}</code></pre>
+</div>
+
+<!-- Section 5: 音频灯光服务 -->
+<div class="section">
+<h1>音频灯光服务</h1>
+
+<h2>硬件规格</h2>
+<table>
+<tr><th>硬件</th><th>规格</th></tr>
+<tr><td>RGB灯条</td><td>256色</td></tr>
+<tr><td>扬声器</td><td>8Ω 3W (峰值5W)</td></tr>
+<tr><td>麦克风阵列</td><td>四麦阵列，麦间距20mm</td></tr>
+</table>
+
+<h2>软件要求</h2>
+<ul>
+<li><code>vui_service</code> &gt;= 2.0.3.8</li>
+<li><code>vui module</code> &gt;= 2.0.0.3</li>
+</ul>
+
+<h2>AudioClient 接口</h2>
+
+<h3>TtsMaker(text, speaker_id)</h3>
+<p>文本转语音</p>
+<table>
+<tr><th>speaker_id</th><th>语言</th></tr>
+<tr><td>0</td><td>中文</td></tr>
+<tr><td>1</td><td>英文</td></tr>
+</table>
+
+<h3>GetVolume() / SetVolume(volume)</h3>
+<p>获取/设置音量，范围 0-100</p>
+
+<h3>LedControl(R, G, B)</h3>
+<p>控制RGB灯光颜色，每个通道 0-255</p>
+<div class="note warn">调用间隔需 &gt; 200ms</div>
+
+<h3>PlayStream(app_name, stream_id, pcm_data)</h3>
+<p>播放PCM音频流</p>
+<ul>
+<li>格式: PCM 16K采样率, 单通道, 16bit</li>
+</ul>
+
+<h3>PlayStop(app_name)</h3>
+<p>停止播放</p>
+
+<h2>ASR 语音识别消息</h2>
+<p>订阅Topic: <code>rt/audio_msg</code></p>
+<p>消息格式 (JSON):</p>
+<pre><code>{
+  "index": 0,
+  "timestamp": 1234567890,
+  "text": "你好机器人",
+  "angle": 90,
+  "speaker_id": 0,
+  "sense": 0.8,
+  "confidence": 0.95,
+  "language": "zh",
+  "is_final": true
+}</code></pre>
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td>index</td><td>消息序号</td></tr>
+<tr><td>timestamp</td><td>时间戳</td></tr>
+<tr><td>text</td><td>识别文本</td></tr>
+<tr><td>angle</td><td>声源角度 (0-180)</td></tr>
+<tr><td>speaker_id</td><td>说话人ID</td></tr>
+<tr><td>sense</td><td>灵敏度</td></tr>
+<tr><td>confidence</td><td>置信度</td></tr>
+<tr><td>language</td><td>语言</td></tr>
+<tr><td>is_final</td><td>是否最终结果</td></tr>
+</table>
+
+<h2>播放状态</h2>
+<p><code>play_state</code>: 0=停止, 1=播放中</p>
+
+<h2>麦克风音频流</h2>
+<ul>
+<li>组播地址: <code>239.168.123.161:5555</code></li>
+<li>格式: 单通道 / 16K采样率 / 16bit</li>
+</ul>
+
+<h2>完整C++例程</h2>
+<pre><code>#include &lt;unitree/robot/g1/audio_client.hpp&gt;
+#include &lt;unitree/robot/channel/channel_subscriber.hpp&gt;
+#include &lt;thread&gt;
+#include &lt;chrono&gt;
+
+using namespace unitree::robot::g1;
+
+void AudioMsgCallback(const void* msg) {
+    // 解析ASR消息
+    // JSON: index, timestamp, text, angle, speaker_id, ...
+    printf("ASR message received\n");
+}
+
+int main() {
+    // 初始化
+    unitree::robot::ChannelFactory::Instance()-&gt;Init(0);
+
+    AudioClient audio_client;
+    audio_client.Init();
+
+    // 订阅ASR消息
+    auto asr_sub = unitree::robot::ChannelSubscriber&lt;std::string&gt;("rt/audio_msg");
+    asr_sub.InitChannel(AudioMsgCallback);
+
+    // TTS播报
+    audio_client.TtsMaker("你好，我是G1D机器人", 0);  // 中文
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    // 设置音量
+    audio_client.SetVolume(70);
+
+    // 获取音量
+    int vol = audio_client.GetVolume();
+    printf("Current volume: %d\n", vol);
+
+    // LED控制 (蓝色)
+    audio_client.LedControl(0, 0, 255);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // LED控制 (红色)
+    audio_client.LedControl(255, 0, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // LED控制 (绿色)
+    audio_client.LedControl(0, 255, 0);
+
+    // 播放PCM流
+    std::vector&lt;uint8_t&gt; pcm_data;  // 16K/单通道/16bit PCM数据
+    // ... 加载PCM数据 ...
+    audio_client.PlayStream("my_app", 1, pcm_data);
+
+    // 停止播放
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    audio_client.PlayStop("my_app");
+
+    // 保持运行，接收ASR消息
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    return 0;
+}</code></pre>
+</div>
+
+</main>
+
+<script>
+const buttons = document.querySelectorAll('.sidebar button');
+const sections = document.querySelectorAll('.section');
+
+function showSection(index) {
+    sections.forEach(s => s.classList.remove('active'));
+    buttons.forEach(b => b.classList.remove('active'));
+    sections[index].classList.add('active');
+    buttons[index].classList.add('active');
+    window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>

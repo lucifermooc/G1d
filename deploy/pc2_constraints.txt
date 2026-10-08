@@ -1,0 +1,5 @@
+# PC2（Python 3.8）的版本约束：numpy 1.24 是最后支持 3.8 的；torch 锁在 NVIDIA 的 JetPack 版，别被换成 CPU 版；lxml 6 没有 3.8 的预编译包
+numpy<1.25
+torch==2.0.0+nv23.05
+lxml<6
+FlagEmbedding<1.4    # 1.4 起用 transformers 新版才有的 dtype 参数，3.8 最高只有 transformers 4.46
