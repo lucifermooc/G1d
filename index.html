@@ -233,6 +233,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .err-level.error{background:#3a1010;color:var(--red);}
 .err-level.fatal{background:#5a0000;color:#ff6060;}
 .health-ok{text-align:center;padding:20px;color:var(--green);font-size:13px;}
+.dock-est{font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;background:#3a2a00;color:var(--yellow);}
 .poi-item{
   background:var(--bg);border:1px solid var(--border);border-radius:6px;
   padding:6px 8px;margin-bottom:5px;
@@ -920,7 +921,7 @@ function redraw() {
   if (mapData.pose) drawRobot(ctx, mapData.pose);
 
   // Drag preview: nav heading (no tool) or POI direction drag
-  if (leftDown && (!drawTool || drawTool === 'poi')) drawNavDragPreview(ctx);
+  if (leftDown && dragsHeading()) drawNavDragPreview(ctx);
 
   // Draw tool preview
   if (drawStep === 1 && drawP1) drawPreview(ctx);
@@ -1132,7 +1133,9 @@ function drawDock(ctx, dock) {
   ctx.fill();
   ctx.strokeStyle = '#3ec89a';
   ctx.lineWidth   = 2 / cam.scale;
+  if (dock.provisional) ctx.setLineDash([3/cam.scale, 2/cam.scale]);  // 估计位置，还没上过桩
   ctx.stroke();
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(0, 0); ctx.lineTo(r*2, 0);
   ctx.strokeStyle = '#3ec89a';
@@ -1243,7 +1246,7 @@ canvas.addEventListener('mousedown', e => {
     leftDidMove = false;
     leftDownPos = {x: e.offsetX, y: e.offsetY};
     leftCurPos  = {x: e.offsetX, y: e.offsetY};
-    if ((!drawTool || drawTool === 'poi') && mapData) redraw();
+    if (dragsHeading() && mapData) redraw();
   }
 });
 
@@ -1268,7 +1271,7 @@ canvas.addEventListener('mousemove', e => {
     leftCurPos = {x: e.offsetX, y: e.offsetY};
     const dx = leftCurPos.x - leftDownPos.x, dy = leftCurPos.y - leftDownPos.y;
     if (Math.abs(dx)+Math.abs(dy) > 5) leftDidMove = true;
-    if (leftDidMove && (!drawTool || drawTool === 'poi')) redraw();
+    if (leftDidMove && dragsHeading()) redraw();
   } else if (drawStep === 1) {
     redraw(); // update draw preview
   }
@@ -1290,16 +1293,15 @@ canvas.addEventListener('mouseup', e => {
   leftDown = false;
   if (!mapData) { leftDownPos = leftCurPos = null; leftDidMove = false; return; }
 
-  if (drawTool === 'poi') {
+  if (drawTool === 'poi' || drawTool === 'dock') {
     const world = canvasToWorld(leftDownPos.x, leftDownPos.y);
+    let yaw = null;
     if (leftDidMove) {
       const wCur = canvasToWorld(e.offsetX, e.offsetY);
       const dx = wCur.x - world.x, dy = wCur.y - world.y;
-      const yaw = Math.sqrt(dx*dx+dy*dy) > 0.05 ? Math.atan2(dy, dx) : null;
-      commitPoiPlace(world, yaw);
-    } else {
-      commitPoiPlace(world, null);
+      if (Math.sqrt(dx*dx+dy*dy) > 0.05) yaw = Math.atan2(dy, dx);
     }
+    drawTool === 'poi' ? commitPoiPlace(world, yaw) : commitDockPlace(world, yaw);
   } else if (drawTool) {
     // Register at the press position regardless of mouse drift
     handleDrawClick(leftDownPos.x, leftDownPos.y);
@@ -1331,7 +1333,6 @@ canvas.addEventListener('mouseleave', () => {
 function handleDrawClick(cx, cy) {
   if (!mapData) return;
   const world = canvasToWorld(cx, cy);
-  if (drawTool === 'dock') { commitDockPlace(world); return; }
   if (drawTool === 'poi')  { commitPoiPlace(world);  return; }
   if (drawStep === 0) {
     drawP1 = world; drawStep = 1; updateDrawInfo();
@@ -1363,6 +1364,9 @@ function toggleTool(tool) {
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+// 按住拖动 = 指定朝向：导航目标、POI、充电桩
+function dragsHeading() { return !drawTool || drawTool === 'poi' || drawTool === 'dock'; }
+
 function updateDrawInfo() {
   const el = document.getElementById('drawInfo');
   if (!drawTool) { el.classList.remove('show'); return; }
@@ -1372,7 +1376,7 @@ function updateDrawInfo() {
     area:  ['点击第一个角点', '点击对角点完成禁行区'],
     wall:  ['点击墙的起点', '点击墙的终点'],
     reloc: ['框选重定位搜索区域（点第一个角）', '点对角完成——将在此区域内重定位'],
-    dock:  ['点击地图放置充电桩（手动，精度低于注册）', ''],
+    dock:  ['按住桩的位置，向机器人在桩上时车头的方向拖动后松开（第一次上桩成功后自动校正为真实位置）', ''],
     poi:   ['点击放置 POI；按住拖动松开 = 设定到达朝向', ''],
   };
   el.textContent = (msgs[drawTool] || ['',''])[drawStep];
@@ -1416,12 +1420,13 @@ async function commitReloc(p1, p2) {
   toggleTool('reloc');
 }
 
-async function commitDockPlace(p) {
+async function commitDockPlace(p, yaw) {
+  // 朝向 = 机器人停在桩上时的朝向；回桩时先导航到桩前，朝向偏太多可能找不到桩
+  if (yaw === null) { toast('请按住后拖动，指定机器人在桩上时的朝向', 'warn'); return; }
   const name = document.getElementById('dockNameInput')?.value.trim() || '充电桩';
-  if (!mapData?.pose) toast('当前朝向未知，yaw 设为 0', 'warn');
-  const yaw = mapData?.pose?.yaw || 0;
-  await post('/api/docks', {x:p.x, y:p.y, yaw, name});
-  toast(`充电桩「${name}」已放置`, 'ok');
+  const r = await post('/api/docks', {x:p.x, y:p.y, yaw, name});
+  if (r?.error) { toast('放置充电桩失败: ' + r.error, 'err'); return; }
+  toast(`充电桩「${name}」已放置（估计位置，第一次上桩成功后自动校正）`, 'ok');
   fetchAnnotations();
   toggleTool('dock');
 }
@@ -1558,13 +1563,15 @@ async function loadMap(silent = false) {
   finally { btn.classList.remove('btn-loading'); }
 }
 
-async function goHome() {
+async function goHome(dockId = null) {
   const btn = document.getElementById('btnHome');
   btn.classList.add('btn-loading');
   try {
-    await post('/api/home');
+    const r = await post('/api/home', dockId ? {dock_id: dockId} : {});
+    if (r?.error) { toast('回桩指令失败: ' + r.error, 'err'); return; }
     navTarget = null;
-    toast('正在返回充电桩', 'ok');
+    const dock = docks.find(d => d.id === r.dock_id);
+    toast(`正在返回充电桩「${(dock?.metadata?.display_name) || '最近的桩'}」`, 'ok');
   } catch(e) { toast('回桩指令失败', 'err'); }
   finally { btn.classList.remove('btn-loading'); }
 }
@@ -1704,7 +1711,7 @@ async function registerDock() {
       fetchAnnotations();
       switchTab('dock');
     } else {
-      toast('注册失败，请确认底盘在充电桩上', 'err');
+      toast('注册失败，请确认底盘在充电桩上' + (r?.error ? '：' + r.error : ''), 'err');
     }
   } finally {
     if (btn) btn.classList.remove('btn-loading');
@@ -1720,10 +1727,10 @@ function renderDockList() {
     const py   = d.pose ? d.pose.y.toFixed(2) : '?';
     const yaw  = d.pose ? (d.pose.yaw*180/Math.PI).toFixed(1) : '?';
     return `<div class="poi-item">
-      <div class="poi-name" title="${d.id}">⚡ ${esc(name)}</div>
+      <div class="poi-name" title="${d.id}">⚡ ${esc(name)}${d.provisional ? ' <span class="dock-est" title="地图上放置的估计位置，第一次上桩成功后自动校正">估计位置</span>' : ''}</div>
       <div class="poi-coords">x:${px} y:${py} yaw:${yaw}°</div>
       <div class="poi-btns">
-        <button class="poi-btn nav" onclick="goHome()">回桩</button>
+        <button class="poi-btn nav" onclick="goHome('${d.id}')">回桩</button>
         <button class="poi-btn del" onclick="delDock('${d.id}')">删除</button>
       </div>
     </div>`;
@@ -1731,15 +1738,15 @@ function renderDockList() {
 }
 
 async function delDock(id) {
-  await fetch('/api/docks/' + id, {method:'DELETE'});
-  toast('充电桩已删除');
+  const r = await (await fetch('/api/docks/' + id, {method:'DELETE'})).json().catch(() => ({}));
+  toast(r?.error ? '删除失败: ' + r.error : '充电桩已删除', r?.error ? 'err' : '');
   fetchAnnotations();
 }
 
 async function clearDocks() {
   if (!confirm('清空全部充电桩记录？')) return;
-  await fetch('/api/docks/clear', {method:'DELETE'});
-  toast('充电桩已清空');
+  const r = await (await fetch('/api/docks/clear', {method:'DELETE'})).json().catch(() => ({}));
+  toast(r?.error ? '清空失败: ' + r.error : '充电桩已清空', r?.error ? 'err' : '');
   fetchAnnotations();
 }
 

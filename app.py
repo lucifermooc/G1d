@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from flask import Flask, jsonify, request, send_file
+import asyncio
 import requests
 import json
 import os
@@ -251,6 +252,8 @@ def get_annotations():
         "/api/core/artifact/v1/lines/walls",
         "/api/core/slam/v1/homedocks",
     )
+    # 适配层的列表多一个 provisional（地图上放置、还没上过桩）；适配层没起来时退回底盘原始列表
+    docks_data = safe(lambda: json.loads(cmd_dock({"cmd": "list_docks"}))) or docks_data
     return jsonify({
         "pois":  pois_data  if isinstance(pois_data,  list) else [],
         "areas": areas_data if isinstance(areas_data, list) else [],
@@ -294,11 +297,9 @@ def stop():
 
 @app.route("/api/home", methods=["POST"])
 def go_home():
-    r = req("post", "/api/core/motion/v1/actions", json={
-        "action_name": "slamtec.agent.actions.GoHomeAction",
-        "options": {},
-    })
-    return jsonify(r.json())
+    """body 可带 dock_id；不带时回最近的桩。经适配层，上桩成功后它会更新估计位置的桩。"""
+    d = request.json or {}
+    return dock_request({"cmd": "dock", "dock_id": d.get("dock_id")})
 
 
 @app.route("/api/relocalize", methods=["POST"])
@@ -345,42 +346,78 @@ def move():
 
 
 # ── 充电桩 ─────────────────────────────────────────────────────────
+# 充电桩全部经适配层（rosbridge /cmd_dock）：它在改完后刷新自己的地图快照，切换地图时桩不会丢；
+# 直接改底盘的话，适配层下次上传旧快照就把桩覆盖掉了。
+ROSBRIDGE_URL = os.getenv("G1D_ROSBRIDGE", "ws://127.0.0.1:9090")
+
+
+def ros_call(service, args, timeout=15):
+    from tornado import websocket
+
+    async def call():
+        ws = await websocket.websocket_connect(ROSBRIDGE_URL)
+        try:
+            ws.write_message(json.dumps({"op": "call_service", "id": "app", "service": service, "args": args}))
+            while True:
+                msg = await ws.read_message()
+                if msg is None:
+                    raise RuntimeError("rosbridge 连接断开")
+                msg = json.loads(msg)
+                if msg.get("op") == "service_response" and msg.get("id") == "app":
+                    if not msg.get("result", True):
+                        raise RuntimeError(f"rosbridge 调用 {service} 失败：{msg.get('values')}")
+                    return msg["values"]
+        finally:
+            ws.close()
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(asyncio.wait_for(call(), timeout))
+    finally:
+        loop.close()
+
+
+def cmd_dock(cmd):
+    values = ros_call("/cmd_dock", {"data": json.dumps(cmd, ensure_ascii=False)})
+    if not values.get("success"):
+        raise RuntimeError(values.get("message") or "适配层执行失败")
+    return values.get("message")
+
+
+def dock_request(cmd):
+    try:
+        message = cmd_dock(cmd)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify(json.loads(message) if message and message[0] in "[{" else {"ok": True})
+
+
 @app.route("/api/docks")
 def get_docks():
-    r = safe(lambda: req("get", "/api/core/slam/v1/homedocks").json())
-    return jsonify(r or [])
+    return dock_request({"cmd": "list_docks"})
 
 
 @app.route("/api/docks/register", methods=["POST"])
 def register_dock():
     d = request.json or {}
-    r = req("post", "/api/core/slam/v1/homedocks/:register", json={
-        "metadata": {"display_name": d.get("name", "充电桩")}
-    })
-    return jsonify(r.json())
+    return dock_request({"cmd": "set_dock_pose", "name": d.get("name", "充电桩")})
 
 
 @app.route("/api/docks", methods=["POST"])
 def add_dock():
     d = request.json
-    r = req("post", "/api/core/slam/v1/homedocks", json={
-        "id": d.get("id") or str(uuid.uuid4()),
-        "pose": {"x": d["x"], "y": d["y"], "yaw": d.get("yaw", 0)},
-        "metadata": {"display_name": d.get("name", "充电桩")},
-    })
-    return jsonify(r.json())
+    return dock_request({"cmd": "add_dock", "x": d["x"], "y": d["y"],
+                         "yaw": d.get("yaw", 0), "name": d.get("name", "充电桩")})
 
 
 @app.route("/api/docks/<dock_id>", methods=["DELETE"])
 def delete_dock(dock_id):
-    req("delete", f"/api/core/slam/v1/homedocks/{dock_id}")
-    return jsonify({"ok": True})
+    return dock_request({"cmd": "delete_dock", "dock_id": dock_id})
 
 
 @app.route("/api/docks/clear", methods=["DELETE"])
 def clear_docks():
-    req("delete", "/api/core/slam/v1/homedocks")
-    return jsonify({"ok": True})
+    return dock_request({"cmd": "clear_docks"})
 
 
 # ── POI ───────────────────────────────────────────────────────────

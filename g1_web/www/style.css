@@ -2,14 +2,14 @@
   --bg: #eef1f4; --panel: #ffffff; --text: #1d2329; --muted: #5b6572; --line: #d3d9e0;
   --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
   --btn: #f4f6f8; --btn-hover: #e8ecf0; --map-bg: #d9dee4; --overlay: rgba(255,255,255,.92);
-  --robot: #d63384; --point: #1f6feb; --point-sel: #e8590c; --hit: #1a7f37; --nogo: #cf222e;
+  --robot: #d63384; --point: #1f6feb; --point-sel: #e8590c; --hit: #1a7f37; --nogo: #cf222e; --dock: #0a7d6e;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #111418; --panel: #191d22; --text: #e3e7ec; --muted: #9aa5b1; --line: #313842;
     --accent: #4b8ff5; --btn: #232931; --btn-hover: #2b323b; --map-bg: #0d1013; --overlay: rgba(25,29,34,.92);
-    --robot: #f06aa8; --point: #5b9cf8; --point-sel: #f2884b; --hit: #3fb950; --nogo: #f06868;
+    --robot: #f06aa8; --point: #5b9cf8; --point-sel: #f2884b; --hit: #3fb950; --nogo: #f06868; --dock: #3cc7b4;
     color-scheme: dark;
   }
 }
@@ -41,6 +41,7 @@ input, textarea { width: 100%; }
   font-variant-numeric: tabular-nums; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px; }
 .pill.on .dot { background: var(--ok); }
+.pill.going { color: var(--dock); border-color: var(--dock); font-weight: 600; }
 
 main { flex: 1; display: flex; min-height: 0; }
 #mapArea { flex: 1; position: relative; min-width: 0; background: var(--map-bg); }
@@ -84,6 +85,13 @@ label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 2px;
 .list .actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .list .actions button { padding: 2px 8px; font-size: 12px; }
 .list.compact li { padding: 4px 8px; }
+.list li.dock-current { border-color: var(--dock); }
+.dock-mark { display: inline-block; width: 20px; text-align: center; font-weight: 700; color: var(--dock); }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 4px; margin-left: 4px;
+  border: 1px solid currentColor; }
+.tag.current { color: var(--dock); }
+.tag.est { color: var(--warn); }
+.row input.num { flex: none; width: 72px; }
 .order { display: inline-block; min-width: 20px; text-align: center; font-weight: 600; color: var(--accent); }
 
 .result { font-size: 13px; }

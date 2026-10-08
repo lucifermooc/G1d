@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>G1 控制台</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <header id="topbar">
@@ -20,6 +20,7 @@
     <span class="pill" title="SLAM 状态 + 控制模式">模式 <span id="stMode">--</span></span>
     <span class="pill" title="/task_status">任务 <span id="stTask">--</span></span>
     <span class="pill" title="当前地图">地图 <span id="stMap">--</span></span>
+    <span class="pill going" id="stDock" title="/dock_state = goto_dock_pose" hidden>⚡ 回充中</span>
   </div>
 </header>
 
@@ -50,6 +51,29 @@
       <div class="row between"><h2>地图列表</h2><button id="btnMapsRefresh">刷新</button></div>
       <p class="note">"使用"会把它设为当前地图并切换到定位模式（/set_current_map_id → /mode_set localization）。</p>
       <ul id="mapList" class="list"></ul>
+
+      <div class="row between"><h2>充电桩</h2><span class="s" id="dockState" title="/dock_state">--</span></div>
+      <p class="note">地图上 <b>S</b> = 当前使用的桩，<b>s</b> = 其它桩；短线指向机器人停在桩上时车头的方向。
+        虚线圈是在地图上放置的估计位置，第一次回这个桩成功后自动校正为真实位置。</p>
+      <label for="dockName">桩名称（注册、放置时使用）</label>
+      <input id="dockName" placeholder="例如：主桩">
+      <div class="row wrap">
+        <button id="btnDockRegister" title="机器人停在桩上时用（/cmd_dock set_dock_pose）">注册当前位置（机器人在桩上）</button>
+        <button id="btnDockPlace">在地图上放置</button>
+      </div>
+      <div class="row wrap">
+        <button id="btnDockGo" class="primary">回最近的桩</button>
+        <button id="btnDockCancel">取消回充</button>
+      </div>
+      <ul id="dockList" class="list"></ul>
+      <div class="row">
+        <span>低电量自动回充：电量低于</span>
+        <label for="lowBattery" class="sr">阈值（%）</label>
+        <input id="lowBattery" type="number" min="0" max="99" step="1" class="num">
+        <span>%</span>
+        <button id="btnLowBatterySave">保存</button>
+      </div>
+      <p class="note">电量低于这个值、又不在充电时，自动结束导航/巡逻，回当前使用的桩（S）充电。填 0 关闭。</p>
     </section>
 
     <!-- 建图 -->
@@ -202,6 +226,6 @@
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="vendor/roslib.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

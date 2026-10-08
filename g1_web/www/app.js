@@ -26,7 +26,9 @@ const SRV = {
   semGo: ["/semantic_map/go", "aid_robot_msgs/srv/SetString"],
   semRebuild: ["/semantic_map/rebuild", "std_srvs/srv/Trigger"],
   semHistory: ["/semantic_map/history", "std_srvs/srv/Trigger"],
+  cmdDock: ["/cmd_dock", "aid_robot_msgs/srv/SetString"],
 };
+const DOCK_STATE = { charging: "充电中", goto_dock_pose: "回充中", undock: "不在桩上" };
 const TASK_STATUS = ["空闲", "执行中", "成功", "失败", "暂停", "已取消"];
 const TASK_TYPE = ["单点导航", "巡逻"];
 const MODE_NAME = { idle: "空闲", mapping: "建图", continue_mapping: "继续建图", localization: "定位", patrol: "导航",
@@ -36,12 +38,12 @@ const S = {
   ros: null, connected: false,
   map: null,          // {img, width, height, resolution, ox, oy}
   mapId: 0, mapName: "",
-  maps: [], points: [], nogo: [],
+  maps: [], points: [], nogo: [], docks: [],
   robot: null,        // {x, y, yaw}
-  robotStatus: "", task: null, battery: null,
+  robotStatus: "", task: null, battery: null, dockState: null,
   view: { scale: 1, ox: 0, oy: 0 },
   tab: "maps",
-  tool: null,         // point | nogo | eraser | relocate
+  tool: null,         // point | nogo | eraser | relocate | dock
   selectedId: null, pending: null, drag: null,
   nogoStart: null, eraser: [],
   patrolSel: [], semHitId: null, mappingPreview: false, semLog: [],
@@ -129,13 +131,35 @@ async function onConnected() {
     S.robot = { x: m.pose.position.x, y: m.pose.position.y, yaw: quatToYaw(m.pose.orientation) };
     draw();
   }, { throttle_rate: 200, queue_length: 1 });
-  // G1 的 battery_state_bridge：percentage 为 0~1；charge/capacity 是 NaN，充电状态看 power_supply_status。
-  // 用 CBOR 编码订阅：JSON 表示不了 NaN，CBOR 可以。
-  subscribe("/battery_state", "sensor_msgs/msg/BatteryState", (m) => {
+  // percentage 为 0~1，充电状态看 power_supply_status。先用 JSON 订阅（G1D 板子上的 Foxy rosbridge 用 CBOR 收不到消息）；
+  // 5 秒没收到再改用 CBOR：G1 的 battery_state_bridge 里 charge/capacity 是 NaN，JSON 表示不了。
+  let gotBattery = false;
+  const onBattery = (m) => {
+    gotBattery = true;
     const p = m.percentage > 1 ? m.percentage : m.percentage * 100;
     const st = { 1: " 充电中", 4: " 已充满" }[m.power_supply_status] || "";
     $("stBattery").textContent = Number.isFinite(p) ? `${Math.round(p)}%${st}` : "--";
-  }, { throttle_rate: 1000, compression: "cbor" });
+  };
+  subscribe("/battery_state", "sensor_msgs/msg/BatteryState", onBattery, { throttle_rate: 1000 });
+  setTimeout(() => {
+    if (!gotBattery && S.connected) {
+      subscribe("/battery_state", "sensor_msgs/msg/BatteryState", onBattery, { throttle_rate: 1000, compression: "cbor" });
+    }
+  }, 5000);
+  S.dockState = null;
+  subscribe("/dock_state", "std_msgs/msg/String", (m) => {  // 适配层每 2 秒发一次
+    const prev = S.dockState;
+    S.dockState = m.data;
+    $("dockState").textContent = DOCK_STATE[m.data] || m.data;
+    $("stDock").hidden = m.data !== "goto_dock_pose";
+    // 刚开始回充（手动、其它程序调用、低电量自动回充都算）：由别的值变成 goto_dock_pose 的那一条
+    if (m.data === "goto_dock_pose" && prev && prev !== "goto_dock_pose") log("开始回充");
+  });
+  subscribe("/dock_result", "std_msgs/msg/String", (m) => {
+    toast({ dock_succeeded: "回充成功", dock_failed: "回充失败", set_dock_pose_succeeded: "充电桩已注册",
+      low_battery_dock: "电量低：已结束当前任务，自动回充电桩" }[m.data] || m.data);
+    guard(loadDocks);  // 回充成功后估计位置的桩会被校正
+  });
   subscribe("/robot_status", "std_msgs/msg/String", (m) => {
     S.robotStatus = m.data;
     const [slam, control] = m.data.split("+");
@@ -154,6 +178,7 @@ async function onConnected() {
   await guard(loadMaps);
   await guard(loadCurrentMap);
   await guard(loadSemLog);
+  await guard(loadLowBattery);
 }
 
 // ---------------- 地图数据 ----------------
@@ -182,10 +207,11 @@ async function loadCurrentMap() {
   S.mapName = cur.success ? cur.map_name : "";
   $("stMap").textContent = S.mapName || "未选择";
   renderMaps();
-  if (!S.mapId) { S.map = null; S.points = []; S.nogo = []; renderAll(); return; }
+  if (!S.mapId) { S.map = null; S.points = []; S.nogo = []; S.docks = []; renderAll(); renderDocks(); return; }
   await reloadMapImage();
   await loadPoints();
   await loadNogo();
+  await loadDocks();
 }
 async function reloadMapImage(fit = true) {
   const res = await call(SRV.mapImage, { id: S.mapId });
@@ -279,6 +305,75 @@ async function deleteMap(m) {
   if (m.id === S.mapId) await loadCurrentMap();
 }
 
+// ---------------- 充电桩 ----------------
+// /cmd_dock 的 G1D 扩展：data 是 JSON 命令，结果是 JSON（见 G1D_Communication_Documentation 3.5）
+async function dockCmd(cmd) {
+  const r = await call(SRV.cmdDock, { data: JSON.stringify(cmd) });
+  if (!r.success) throw new Error(r.message);
+  return r.message && "[{".includes(r.message[0]) ? JSON.parse(r.message) : null;
+}
+async function loadDocks() {
+  S.docks = await dockCmd({ cmd: "list_docks" });
+  renderDocks(); draw();
+}
+const dockName = (d) => (d.metadata && d.metadata.display_name) || "充电桩";
+function renderDocks() {
+  const ul = $("dockList"); ul.innerHTML = "";
+  for (const d of S.docks) {
+    const li = document.createElement("li");
+    li.className = d.current ? "dock-current" : "";
+    li.innerHTML = `<span class="dock-mark"></span><div class="grow"><div class="t"><span class="n"></span></div>
+      <div class="s"></div></div><div class="actions"><button data-act="go">回充</button>
+      <button data-act="use">设为当前</button><button data-act="delete" class="danger">删除</button></div>`;
+    li.querySelector(".dock-mark").textContent = d.current ? "S" : "s";
+    li.querySelector(".n").textContent = dockName(d);
+    if (d.current) li.querySelector(".t").insertAdjacentHTML("beforeend", '<span class="tag current">当前使用</span>');
+    if (d.provisional) li.querySelector(".t").insertAdjacentHTML("beforeend", '<span class="tag est">估计位置</span>');
+    li.querySelector(".s").textContent = `(${round(d.pose.x, 2)}, ${round(d.pose.y, 2)}) ${deg(d.pose.yaw || 0)}°`;
+    li.querySelector(".grow").onclick = () => centerOn(d.pose.x, d.pose.y);
+    li.querySelector('[data-act="go"]').onclick = () => guard(() => goDock(d));
+    li.querySelector('[data-act="use"]').hidden = d.current;
+    li.querySelector('[data-act="use"]').onclick = () => guard(async () => {
+      await dockCmd({ cmd: "use_dock", dock_id: d.id });
+      toast(`当前使用的桩改为"${dockName(d)}"`); await loadDocks();
+    });
+    li.querySelector('[data-act="delete"]').onclick = (e) => confirmThen(e.target, "确认删除", () => guard(async () => {
+      await dockCmd({ cmd: "delete_dock", dock_id: d.id });
+      toast(`已删除"${dockName(d)}"`); await loadDocks();
+    }));
+    ul.appendChild(li);
+  }
+  if (!S.docks.length) ul.innerHTML = '<li class="s">当前地图还没有充电桩</li>';
+}
+async function goDock(d) {  // 不带 d 时回最近的桩；去的那个会变成当前使用的桩
+  const r = await dockCmd(d ? { cmd: "dock", dock_id: d.id } : { cmd: "dock" });
+  const target = S.docks.find((x) => x.id === r.dock_id);
+  toast(`正在回充电桩"${target ? dockName(target) : r.dock_id}"`);
+  await loadDocks();
+}
+async function registerDock() {
+  const name = $("dockName").value.trim();
+  await dockCmd(name ? { cmd: "set_dock_pose", name } : { cmd: "set_dock_pose" });
+  await loadDocks();
+}
+async function loadLowBattery() {
+  $("lowBattery").value = (await dockCmd({ cmd: "low_battery" })).percent;
+}
+async function saveLowBattery() {
+  const percent = parseFloat($("lowBattery").value);
+  if (!Number.isFinite(percent) || percent < 0 || percent >= 100) throw new Error("阈值填 0~99（0 = 关闭）");
+  const r = await dockCmd({ cmd: "low_battery", percent });
+  $("lowBattery").value = r.percent;
+  toast(r.percent > 0 ? `电量低于 ${r.percent}% 时自动回充` : "已关闭低电量自动回充");
+}
+async function placeDock(x, y, yaw) {
+  if (!Number.isFinite(yaw)) throw new Error("按住桩的位置后，朝机器人停在桩上时车头的方向拖一下再松开");
+  const name = $("dockName").value.trim() || "充电桩";
+  await dockCmd({ cmd: "add_dock", x: round(x), y: round(y), yaw: round(yaw, 4), name });
+  toast(`已放置"${name}"（估计位置，第一次回桩成功后自动校正）`);
+  await loadDocks();
+}
+
 // ---------------- 建图 ----------------
 function updateMappingInfo() {
   const mapping = S.robotStatus.startsWith("mapping");
@@ -294,7 +389,7 @@ function startPreview() {
     S.map = await gridToMap(m);
     if (first || !S.previewFitted) { fitView(); S.previewFitted = true; }
     draw();
-  }, { compression: "png" });
+  }, { queue_length: 1 });  // 不用 compression: "png"：G1D 板子上的 rosbridge 1.3.2（Foxy）PNG 压缩有 bug，一条都发不出来
   renderAll();
 }
 function stopPreview() {
@@ -701,6 +796,28 @@ function arrow(x, y, yaw, color, label, big) {
     ctx.fillStyle = color; ctx.fillText(label, sx + 13, sy + 18);
   }
 }
+function drawDock(d) {
+  const [sx, sy] = w2s(d.pose.x, d.pose.y), yaw = d.pose.yaw || 0, color = css("--dock"), r = d.current ? 10 : 8;
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(yaw) * (r + 9), sy - Math.sin(yaw) * (r + 9)); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = d.current ? color : css("--panel"); ctx.fill();
+  if (d.provisional) ctx.setLineDash([3, 2]);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = `700 ${d.current ? 13 : 12}px system-ui, sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = d.current ? css("--panel") : color;
+  ctx.fillText(d.current ? "S" : "s", sx, sy + 1);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+}
+function drawDockLabel(d) {  // 画在机器人之后：机器人停在桩上时会盖住圆圈，标签里也带上 S / s
+  const [sx, sy] = w2s(d.pose.x, d.pose.y), color = css("--dock"), r = d.current ? 10 : 8;
+  const label = `${d.current ? "S" : "s"} ${dockName(d)}`;
+  ctx.font = "600 12px system-ui, sans-serif";
+  const w = ctx.measureText(label).width;
+  ctx.fillStyle = css("--overlay"); ctx.fillRect(sx + r + 3, sy - 9, w + 8, 18);
+  ctx.fillStyle = color; ctx.fillText(label, sx + r + 7, sy + 4);
+}
 function draw() {
   const r = canvas.getBoundingClientRect();
   ctx.clearRect(0, 0, r.width, r.height);
@@ -734,6 +851,8 @@ function draw() {
       pts.concat(pts[0]).forEach((p, i) => { const [a, b] = w2s(p.x, p.y); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); });
       ctx.stroke(); ctx.setLineDash([]);
     }
+    // 充电桩：当前使用的标 S，其它标 s
+    for (const d of S.docks) drawDock(d);
     // 点位
     for (const p of S.points) {
       const color = p.id === S.selectedId ? css("--point-sel") : p.id === S.semHitId ? css("--hit") : css("--point");
@@ -743,7 +862,8 @@ function draw() {
   }
   if (S.drag && S.drag.kind === "pose") {
     const [x, y] = S.drag.start;
-    arrow(x, y, dragYaw(S.drag), S.tool === "relocate" ? css("--robot") : css("--point-sel"), null, true);
+    const color = { relocate: css("--robot"), dock: css("--dock") }[S.tool] || css("--point-sel");
+    arrow(x, y, dragYaw(S.drag), color, null, true);
   }
   // 机器人
   if (S.robot) {
@@ -753,6 +873,7 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-9, 9); ctx.lineTo(-5, 0); ctx.lineTo(-9, -9); ctx.closePath();
     ctx.fill(); ctx.stroke(); ctx.restore();
   }
+  if (!S.mappingPreview) for (const d of S.docks) drawDockLabel(d);
 }
 function evPos(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 function hitPoint(sx, sy) {
@@ -790,8 +911,9 @@ canvas.addEventListener("pointerdown", (e) => {
     const hit = hitPoint(sx, sy);
     if (hit) { selectPoint(hit.id); S.drag = { kind: "move", p: hit, last: [sx, sy], moved: false }; return; }
   }
-  if (S.tool === "point" || S.tool === "relocate") {
-    const def = S.tool === "relocate" && S.robot ? S.robot.yaw : 0;
+  if (S.tool === "point" || S.tool === "relocate" || S.tool === "dock") {
+    // 充电桩必须拖出朝向（NaN = 没拖）；重定位不拖时沿用机器人当前朝向
+    const def = S.tool === "dock" ? NaN : S.tool === "relocate" && S.robot ? S.robot.yaw : 0;
     S.drag = { kind: "pose", start: [x, y], startScreen: [sx, sy], cur: [sx, sy], defaultYaw: def };
     draw(); return;
   }
@@ -819,6 +941,7 @@ canvas.addEventListener("pointerup", () => {
   if (d.kind === "pose") {
     const [x, y] = d.start, yaw = dragYaw(d);
     if (S.tool === "relocate") { relocate(round(x), round(y), round(yaw, 4)); setTool(null); }
+    else if (S.tool === "dock") guard(async () => { await placeDock(x, y, yaw); setTool(null); });
     else newPoint(x, y, yaw);
   }
   if (d.kind === "move" && d.moved) guard(savePoint);
@@ -840,12 +963,14 @@ const HINTS = {
   nogo: "依次点击起点和终点画一条禁行线。",
   eraser: "点击或拖动涂抹，然后点右边的“应用橡皮擦”。",
   relocate: "在机器人实际所在位置按住，朝它面对的方向拖一下再松开。",
+  dock: "在充电桩的位置按住，朝机器人停在桩上时车头的方向拖一下再松开。",
 };
 function setTool(tool) {
   S.tool = tool; S.nogoStart = null;
   $("btnNogoDraw").classList.toggle("active", tool === "nogo");
   $("btnEraser").classList.toggle("active", tool === "eraser");
   $("btnRelocate").classList.toggle("active", tool === "relocate");
+  $("btnDockPlace").classList.toggle("active", tool === "dock");
   $("mapHint").textContent = S.mappingPreview ? "建图中：左边是实时地图" : (HINTS[tool] || "拖动平移，滚轮缩放。");
   draw();
 }
@@ -862,7 +987,12 @@ document.querySelectorAll("#tabs button").forEach((b) => { b.onclick = () => set
 $("connForm").addEventListener("submit", (e) => { e.preventDefault(); connect($("host").value.trim() || "localhost"); });
 $("btnFit").onclick = fitView;
 $("btnCenterRobot").onclick = () => S.robot && centerOn(S.robot.x, S.robot.y);
-$("btnMapsRefresh").onclick = () => guard(loadMaps);
+$("btnMapsRefresh").onclick = () => guard(async () => { await loadMaps(); await loadDocks(); });
+$("btnDockRegister").onclick = () => guard(registerDock);
+$("btnDockPlace").onclick = () => setTool(S.tool === "dock" ? null : "dock");
+$("btnDockGo").onclick = () => guard(() => goDock(null));
+$("btnLowBatterySave").onclick = () => guard(saveLowBattery);
+$("btnDockCancel").onclick = () => guard(async () => { await dockCmd({ cmd: "cancel_dock" }); toast("已取消回充"); });
 $("btnMapStart").onclick = (e) => confirmThen(e.currentTarget, "再点一次：清空并新建", () => guard(startMapping));
 $("btnMapContinue").onclick = () => guard(continueMapping);
 $("btnMapCancel").onclick = () => guard(cancelMapping);

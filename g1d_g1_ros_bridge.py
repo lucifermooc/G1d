@@ -60,6 +60,7 @@ class G1DROSBridge(Node):
         self._last_scan_poll = 0.0
         self._last_power_poll = 0.0
         self._dock_action_id = None
+        self._dock_target_id = None
         self._pending_dock_result = None
         self._teleop_direction = None
         self._teleop_action_id = None
@@ -316,23 +317,59 @@ class G1DROSBridge(Node):
         return response
 
     def on_dock(self, request, response):
+        """G1 commands are plain strings; the multi-dock extensions are JSON objects with "cmd"."""
         try:
-            if request.data == "set_dock_pose":
-                self.api.register_dock()
+            data = request.data.strip()
+            extended = data.startswith("{")
+            cmd = json.loads(data) if extended else {"cmd": data}
+            name = cmd.get("cmd")
+            result = None
+            if name == "set_dock_pose":
+                result = self.api.register_dock(cmd.get("name"))
                 self._pending_dock_result = "set_dock_pose_succeeded"
-            elif request.data == "dock":
-                self._dock_action_id = self.api.start_dock()
-            elif request.data == "cancel_dock":
+            elif name == "dock":
+                self._dock_action_id, self._dock_target_id = self.api.start_dock(cmd.get("dock_id"))
+                result = {"dock_id": self._dock_target_id}
+            elif name == "cancel_dock":
                 if self._dock_action_id is not None:
                     self.api.cancel_dock(self._dock_action_id)
                     self._dock_action_id = None
+            elif name == "list_docks":
+                result = self.api.list_docks()
+            elif name == "use_dock":
+                self.api.use_dock(cmd["dock_id"])
+            elif name == "add_dock":
+                result = {"id": self.api.add_dock(cmd["x"], cmd["y"], cmd.get("yaw", 0),
+                                                  cmd.get("name") or "充电桩")}
+            elif name == "delete_dock":
+                self.api.delete_dock(cmd["dock_id"])
+            elif name == "clear_docks":
+                self.api.clear_docks()
+            elif name == "low_battery":
+                result = {"percent": self.api.low_battery_percent(cmd.get("percent"))}
             else:
                 raise BridgeError(f"unsupported dock command: {request.data}")
-            response.success, response.message = True, "ok"
+            response.success = True
+            response.message = (json.dumps(result, ensure_ascii=False)
+                                if result is not None and (extended or name == "list_docks") else "ok")
         except Exception as exc:
             response.message = str(exc)
             self._error("cmd_dock", exc)
         return response
+
+    def _check_low_battery(self, power):
+        if self._dock_action_id is not None:
+            return  # already returning to a dock
+        try:
+            started = self.api.low_battery_dock(power, time.monotonic())
+        except Exception as exc:
+            self._error("low battery dock", exc)
+            return
+        if started:
+            self._dock_action_id, self._dock_target_id = started
+            self.get_logger().warn(f"battery {power.get('batteryPercentage')}% below "
+                                   f"{self.api.low_battery_percent()}%: returning to dock {started[1]}")
+            self.dock_result_pub.publish(String(data="low_battery_dock"))
 
     def on_get_ip(self, request, response):
         response.success = True
@@ -494,6 +531,8 @@ class G1DROSBridge(Node):
                 self.dock_state_pub.publish(String(data=dock_state))
             except Exception as exc:
                 self._error("power poll", exc)
+            else:
+                self._check_low_battery(power)
         try:
             self.status_pub.publish(String(data=self.api.robot_status()))
         except Exception as exc:
@@ -505,9 +544,13 @@ class G1DROSBridge(Node):
             try:
                 state = self.api.action_result(self._dock_action_id)
                 if state.get("status") == 4:
-                    result = "dock_succeeded" if state.get("result") == 0 else "dock_failed"
-                    self.dock_result_pub.publish(String(data=result))
+                    succeeded = state.get("result") == 0
+                    self.dock_result_pub.publish(String(data="dock_succeeded" if succeeded else "dock_failed"))
                     self._dock_action_id = None
+                    if succeeded:
+                        updated = self.api.finish_dock(self._dock_target_id)
+                        if updated:
+                            self.get_logger().info(f"dock {updated['id']} pose updated to {updated['pose']}")
             except Exception as exc:
                 self._error("dock poll", exc)
 

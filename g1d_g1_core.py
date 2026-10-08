@@ -32,6 +32,10 @@ def quaternion_from_yaw(yaw):
     return {"x": 0.0, "y": 0.0, "z": math.sin(yaw / 2), "w": math.cos(yaw / 2)}
 
 
+def _distance(a, b):
+    return math.hypot(float(a["x"]) - float(b["x"]), float(a["y"]) - float(b["y"]))
+
+
 def parse_explore(raw):
     """Decode G1D's 36 byte header and occupancy bytes."""
     if len(raw) < 36:
@@ -120,7 +124,14 @@ class G1DCompat:
     CURRENT_ACTION = ACTION_PATH + "/:current"
     POI_PATH = "/api/core/artifact/v1/pois"
     WALL_PATH = "/api/core/artifact/v1/lines/walls"
+    DOCK_PATH = "/api/core/slam/v1/homedocks"
+    HOME_POSE = "/api/core/slam/v1/homepose"
+    # Slamtec requires 2 m of free space around a dock, so two docks this close are the same dock.
+    DOCK_SAME_RADIUS = 1.0
     PATROL_RETRIES = 3  # consecutive failed patrol legs before the patrol is reported as failed
+    LOW_BATTERY_RETRY = 120.0  # s between automatic returns while the battery stays low
+    LOW_BATTERY_ATTEMPTS = 3
+    LOW_BATTERY_HYSTERESIS = 2.0  # % above the threshold before a new low-battery episode can start
 
     def __init__(self, robot, data_dir):
         self.robot = robot
@@ -132,6 +143,7 @@ class G1DCompat:
         self.pending = None
         self.task = {"status": 0, "task_type": 0, "targets": [], "yaw": None, "action_id": None}
         self.control = "idle"  # control half of G1 /robot_status: last accepted /mode_set
+        self._low_battery = {"attempts": 0, "next": 0.0}
         # Catalog map the robot currently holds; None after a new mapping cleared the robot's map.
         self.loaded_id = self.catalog["current_id"]
 
@@ -561,16 +573,168 @@ class G1DCompat:
                 raise
         self._persist_artifacts()
 
+    def _set_provisional(self, dock_id, provisional):
+        """Docks placed by coordinates are estimates until the robot has docked on them once."""
+        with self.lock:
+            ids = [i for i in self.catalog.get("provisional_docks", []) if i != dock_id]
+            if provisional:
+                ids.append(dock_id)
+            self.catalog["provisional_docks"] = ids
+            self._save_catalog()
+
+    def docks(self):
+        """G1D homedocks (id / pose / metadata) plus provisional: placed on the map, not docked on yet."""
+        provisional = set(self.catalog.get("provisional_docks", []))
+        return [dict(d, provisional=d.get("id") in provisional)
+                for d in self.robot.json("GET", self.DOCK_PATH) or [] if d.get("pose")]
+
+    def list_docks(self):
+        """docks() plus current: the dock GoHomeAction goes to (G1D's home pose; the only dock if
+        there is one)."""
+        docks = self.docks()
+        current = docks[0] if len(docks) == 1 else None
+        if len(docks) > 1:
+            try:
+                home = self.robot.json("GET", self.HOME_POSE)
+            except requests.HTTPError:
+                home = None
+            if isinstance(home, dict) and "x" in home:
+                nearest = min(docks, key=lambda d: _distance(d["pose"], home))
+                if _distance(nearest["pose"], home) < self.DOCK_SAME_RADIUS:
+                    current = nearest
+        return [dict(d, current=d is current) for d in docks]
+
+    def _set_home_pose(self, pose):
+        ok = self.robot.json("PUT", self.HOME_POSE,
+                             json={"x": pose["x"], "y": pose["y"], "z": 0,
+                                   "yaw": pose.get("yaw", 0), "pitch": 0, "roll": 0})
+        if ok is False:
+            raise BridgeError("G1D refused to select the dock")
+
+    def use_dock(self, dock_id):
+        """Make dock_id G1D's home dock (current in list_docks). A "dock" command without dock_id
+        still goes to the nearest dock and makes that one current."""
+        dock = next((d for d in self.docks() if d["id"] == dock_id), None)
+        if dock is None:
+            raise BridgeError(f"dock {dock_id} does not exist")
+        self._set_home_pose(dock["pose"])
+
+    def _nearest_dock(self, docks):
+        if not docks:
+            return None
+        pose = self.pose()
+        return min(docks, key=lambda d: _distance(d["pose"], pose))
+
     def dock_pose(self):
-        docks = self.robot.json("GET", "/api/core/slam/v1/homedocks")
-        return (docks[0].get("pose") or {}) if docks else None
+        dock = self._nearest_dock(self.docks())
+        return dock["pose"] if dock else None
 
-    def register_dock(self):
-        return self.robot.json("POST", "/api/core/slam/v1/homedocks/:register",
-                               json={"metadata": {"display_name": "G1D充电桩"}})
+    def add_dock(self, x, y, yaw, name="充电桩"):
+        dock_id = str(uuid.uuid4())
+        ok = self.robot.json("POST", self.DOCK_PATH,
+                             json={"id": dock_id, "pose": {"x": float(x), "y": float(y), "yaw": float(yaw)},
+                                   "metadata": {"display_name": name}})
+        if ok is False:
+            raise BridgeError("G1D refused the dock")
+        self._set_provisional(dock_id, True)
+        self._persist_artifacts()
+        return dock_id
 
-    def start_dock(self):
-        return self._send_action("GoHomeAction", {})["action_id"]
+    def delete_dock(self, dock_id):
+        self.robot.request("DELETE", f"{self.DOCK_PATH}/{dock_id}")
+        self._set_provisional(dock_id, False)
+        self._persist_artifacts()
+
+    def clear_docks(self):
+        self.robot.request("DELETE", self.DOCK_PATH)
+        with self.lock:
+            self.catalog["provisional_docks"] = []
+            self._save_catalog()
+        self._persist_artifacts()
+
+    def register_dock(self, name=None, keep_id=None):
+        """Record the dock the robot is sitting on. A dock already within DOCK_SAME_RADIUS is the
+        same physical dock: it keeps its id and name and takes the registered pose; other duplicates
+        (e.g. one the firmware registered itself) are removed."""
+        entry = self.robot.json("POST", self.DOCK_PATH + "/:register",
+                                json={"metadata": {"display_name": name or "G1D充电桩"}})
+        near = [d for d in self.docks()
+                if d["id"] != entry["id"] and _distance(d["pose"], entry["pose"]) < self.DOCK_SAME_RADIUS]
+        keep = next((d for d in near if d["id"] == keep_id), near[0] if near else None)
+        for dock in near:
+            if dock is not keep:
+                self.robot.request("DELETE", f"{self.DOCK_PATH}/{dock['id']}")
+                self._set_provisional(dock["id"], False)
+        if keep is not None:
+            metadata = dict(keep.get("metadata") or {})
+            if name:
+                metadata["display_name"] = name
+            self.robot.request("PUT", f"{self.DOCK_PATH}/{keep['id']}",
+                               json={"pose": entry["pose"], "metadata": metadata})
+            self.robot.request("DELETE", f"{self.DOCK_PATH}/{entry['id']}")
+            self._set_provisional(keep["id"], False)
+            entry = {"id": keep["id"], "pose": entry["pose"], "metadata": metadata}
+        self._persist_artifacts()
+        return entry
+
+    def start_dock(self, dock_id=None):
+        """GoHomeAction to dock_id, or to the dock nearest the robot. Returns (action_id, dock_id)."""
+        docks = self.docks()
+        if dock_id:
+            dock = next((d for d in docks if d["id"] == dock_id), None)
+            if dock is None:
+                raise BridgeError(f"dock {dock_id} does not exist")
+        else:
+            dock = self._nearest_dock(docks)
+            if dock is None:
+                raise BridgeError("no dock on this map")
+        if len(docks) > 1:  # with several docks G1D goes to the one set as home pose
+            self._set_home_pose(dock["pose"])
+        return self._send_action("GoHomeAction", {})["action_id"], dock["id"]
+
+    def low_battery_percent(self, percent=None):
+        """Auto-return threshold in % (0 = off), kept in the catalog; G1D_LOW_BATTERY is the default."""
+        with self.lock:
+            if percent is not None:
+                percent = float(percent)
+                if not 0 <= percent < 100:
+                    raise BridgeError("low battery threshold must be 0-99 %")
+                self.catalog["low_battery_percent"] = percent
+                self._save_catalog()
+            return float(self.catalog.get("low_battery_percent", os.getenv("G1D_LOW_BATTERY", "10")))
+
+    def low_battery_dock(self, power, now):
+        """Below the threshold and not charging: end the navigation / patrol task and dock at the
+        current dock (the nearest one if none is marked current). Returns (action_id, dock_id) when
+        docking was started. A failed return is retried every LOW_BATTERY_RETRY s, at most
+        LOW_BATTERY_ATTEMPTS times, until the robot charges or the battery recovers."""
+        threshold = self.low_battery_percent()
+        percent = float(power.get("batteryPercentage", 100))
+        if (power.get("isCharging") or power.get("dockingStatus") == "on_dock"
+                or percent >= threshold + self.LOW_BATTERY_HYSTERESIS):
+            self._low_battery = {"attempts": 0, "next": 0.0}
+            return None
+        state = self._low_battery
+        if (threshold <= 0 or percent >= threshold or state["attempts"] >= self.LOW_BATTERY_ATTEMPTS
+                or now < state["next"]):
+            return None
+        state["attempts"] += 1
+        state["next"] = now + self.LOW_BATTERY_RETRY
+        try:
+            self.cancel()
+        except BridgeError:
+            pass  # the running action belongs to another controller; GoHomeAction replaces it
+        current = next((d for d in self.list_docks() if d["current"]), None)
+        return self.start_dock(current["id"] if current else None)
+
+    def finish_dock(self, dock_id):
+        """After a successful GoHomeAction: replace a provisional dock's estimated pose with the
+        real one. Returns the updated dock, or None when nothing changed."""
+        if dock_id not in self.catalog.get("provisional_docks", []):
+            return None
+        if self.power_status().get("dockingStatus") != "on_dock":
+            return None
+        return self.register_dock(keep_id=dock_id)
 
     def action_result(self, action_id):
         return self.robot.json("GET", f"{self.ACTION_PATH}/{action_id}").get("state", {})
