@@ -237,6 +237,9 @@ class G1DCompat:
 
     def _upload_map(self, map_id):
         stcm = (self.data_dir / f"{map_id}.stcm").read_bytes()
+        # A map saved with no docks has no dock layer, and loading it keeps the docks already on the
+        # robot, so the previous map's docks would show up on this one.
+        self.robot.request("DELETE", self.DOCK_PATH)
         self.robot.request("PUT", self.STCM_PATH, data=stcm,
                            headers={"Content-Type": "application/octet-stream"})
         self.loaded_id = map_id

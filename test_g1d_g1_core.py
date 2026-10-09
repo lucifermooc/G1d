@@ -328,6 +328,8 @@ class CoreTests(unittest.TestCase):
         self.assertNotIn(stcm_put, [c[:2] for c in self.robot.calls[n:]])  # the new map is already on the robot
         self.bridge.set_map(1)
         self.assertEqual(self.robot.calls[-1][:2], stcm_put)
+        # 没有桩的地图存档里没有桩这一层，上传时底盘会保留上一张图的桩（实机看到过）：先清掉
+        self.assertEqual(self.robot.calls[-2][:2], ("DELETE", self.bridge.DOCK_PATH))
         self.assertEqual(self.bridge.current_map_id(), 1)
 
     def test_navigation_status_and_ownership(self):
