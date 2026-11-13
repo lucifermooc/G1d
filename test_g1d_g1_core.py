@@ -305,7 +305,10 @@ class CoreTests(unittest.TestCase):
         self.bridge.set_mode("mapping")
         self.assertEqual([c[:2] for c in self.robot.calls[n:]],
                          [("GET_BINARY", self.bridge.MAP_PATH), ("GET_BINARY", self.bridge.STCM_PATH),
-                          ("DELETE", "/api/core/slam/v1/maps"), ("PUT", "/api/core/slam/v1/mapping/:enable")])
+                          ("DELETE", "/api/core/slam/v1/maps"), ("PUT", "/api/core/slam/v1/localization/pose"),
+                          ("PUT", "/api/core/slam/v1/mapping/:enable")])
+        # 清图不会重置位姿（实机验证过）：建图起点要归零，否则新图的 (0,0) 不在起点
+        self.assertEqual(self.robot.calls[n + 3][2], {"x": 0, "y": 0, "z": 0, "yaw": 0})
         backup = sorted(p.suffix for p in (Path(self.temp.name) / "backup").iterdir())
         self.assertEqual(backup, [".explore", ".stcm"])
         # Cancel the new map: localizing puts map 1 back first, once.

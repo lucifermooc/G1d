@@ -40,7 +40,8 @@ run() {  # run <服务名> <命令...>
   "${SIGINT_DEFAULT[@]}" "$@" > "$L/$name.log" 2>&1 < /dev/null &
   NAME[$!]=$name
 }
-run rosbridge    ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090
+# ★ 长 service（语义检索）默认占住消息线程，取消/遥测全排队；每次调用独立线程。
+run rosbridge    ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090 call_services_in_new_thread:=true
 run semantic_map ros2 launch semantic_map_ros semantic_map.launch.py model_name:="$HOME/models/bge-m3" \
                    qdrant_path:="$HOME/maps/semantic_qdrant" use_fp16:="$FP16"
 run g1_web       "$PY" "$D/deploy/serve.py" 8090 --directory "$D/g1_web/www"

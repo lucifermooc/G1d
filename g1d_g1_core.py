@@ -319,6 +319,9 @@ class G1DCompat:
             self._backup_live_map()
             self.robot.request("DELETE", "/api/core/slam/v1/maps")
             self.loaded_id = None
+            # Clearing the map keeps the pose from the previous map's frame; without this the new
+            # map's (0,0) is not where mapping started.
+            self.set_pose(0, 0, 0)
             self.robot.request("PUT", "/api/core/slam/v1/mapping/:enable", json={"enable": True})
         elif action == "continue_mapping":  # keep extending the map the robot holds
             self.robot.request("PUT", "/api/core/slam/v1/mapping/:enable", json={"enable": True})
